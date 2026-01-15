@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { ConfigMergeResult, DetectedConfig, InstallConfig } from "./types"
 
-const PACKAGE_NAME = "oh-my-opencode-lite"
+const PACKAGE_NAME = "oh-my-opencode-slim"
 
 function getConfigDir(): string {
   return process.env.XDG_CONFIG_HOME
@@ -16,7 +16,7 @@ function getConfigJson(): string {
 }
 
 function getLiteConfig(): string {
-  return join(getConfigDir(), "oh-my-opencode-lite.json")
+  return join(getConfigDir(), "oh-my-opencode-slim.json")
 }
 
 function ensureConfigDir(): void {
@@ -100,7 +100,7 @@ export async function addPluginToOpenCodeConfig(): Promise<ConfigMergeResult> {
     let config = parseConfig(configPath) ?? {}
     const plugins = config.plugin ?? []
 
-    // Remove existing oh-my-opencode-lite entries
+    // Remove existing oh-my-opencode-slim entries
     const filteredPlugins = plugins.filter(
       (p) => p !== PACKAGE_NAME && !p.startsWith(`${PACKAGE_NAME}@`)
     )

@@ -30,7 +30,7 @@ const SYMBOLS = {
 function printHeader(isUpdate: boolean): void {
   const mode = isUpdate ? "Update" : "Install"
   console.log()
-  console.log(`${BOLD}oh-my-opencode-lite ${mode}${RESET}`)
+  console.log(`${BOLD}oh-my-opencode-slim ${mode}${RESET}`)
   console.log("=".repeat(30))
   console.log()
 }
@@ -172,7 +172,7 @@ async function runInstall(args: InstallArgs, config: InstallConfig): Promise<num
   printSuccess(`OpenCode ${version ?? ""} detected`)
 
   // Step 2: Add plugin
-  printStep(step++, totalSteps, "Adding oh-my-opencode-lite plugin...")
+  printStep(step++, totalSteps, "Adding oh-my-opencode-slim plugin...")
   const pluginResult = await addPluginToOpenCodeConfig()
   if (!pluginResult.success) {
     printError(`Failed: ${pluginResult.error}`)
@@ -200,7 +200,7 @@ async function runInstall(args: InstallArgs, config: InstallConfig): Promise<num
   }
 
   // Step 5: Write lite config
-  printStep(step++, totalSteps, "Writing oh-my-opencode-lite configuration...")
+  printStep(step++, totalSteps, "Writing oh-my-opencode-slim configuration...")
   const liteResult = writeLiteConfig(config)
   if (!liteResult.success) {
     printError(`Failed: ${liteResult.error}`)
@@ -244,7 +244,7 @@ export async function install(args: InstallArgs): Promise<number> {
       }
       console.log()
       printInfo(
-        "Usage: bunx oh-my-opencode-lite install --no-tui --antigravity=<yes|no> --openai=<yes|no> --cerebras=<yes|no>"
+        "Usage: bunx oh-my-opencode-slim install --no-tui --antigravity=<yes|no> --openai=<yes|no> --cerebras=<yes|no>"
       )
       console.log()
       return 1

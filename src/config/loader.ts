@@ -58,10 +58,10 @@ export function loadPluginConfig(directory: string): PluginConfig {
   const userConfigPath = path.join(
     getUserConfigDir(),
     "opencode",
-    "oh-my-opencode-lite.json"
+    "oh-my-opencode-slim.json"
   );
   
-  const projectConfigPath = path.join(directory, ".opencode", "oh-my-opencode-lite.json");
+  const projectConfigPath = path.join(directory, ".opencode", "oh-my-opencode-slim.json");
 
   let config: PluginConfig = loadConfigFromPath(userConfigPath) ?? {};
   

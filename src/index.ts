@@ -7,6 +7,9 @@ import {
   lsp_find_references,
   lsp_diagnostics,
   lsp_rename,
+  grep,
+  ast_grep_search,
+  ast_grep_replace,
 } from "./tools";
 import { loadPluginConfig } from "./config";
 import { createBuiltinMcps } from "./mcp";
@@ -19,7 +22,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   const mcps = createBuiltinMcps(config.disabled_mcps);
 
   return {
-    name: "oh-my-opencode-lite",
+    name: "oh-my-opencode-slim",
 
     agent: agents,
 
@@ -29,6 +32,9 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       lsp_find_references,
       lsp_diagnostics,
       lsp_rename,
+      grep,
+      ast_grep_search,
+      ast_grep_replace,
     },
 
     mcp: mcps,

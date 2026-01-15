@@ -1,6 +1,6 @@
 # Code Reference
 
-Quick reference for understanding and extending oh-my-opencode-lite.
+Quick reference for understanding and extending oh-my-opencode-slim.
 
 ## Directory Structure
 
@@ -25,7 +25,7 @@ src/
 ```typescript
 const OhMyOpenCodeLite: Plugin = async (ctx) => {
   return {
-    name: "oh-my-opencode-lite",
+    name: "oh-my-opencode-slim",
     agent: agents,      // Agent configurations
     tool: tools,        // Custom tools
     mcp: mcps,          // MCP server configs
@@ -157,8 +157,8 @@ type PluginConfig = {
 ```
 
 **Config file locations:**
-- User: `~/.config/opencode/oh-my-opencode-lite.json`
-- Project: `.opencode/oh-my-opencode-lite.json`
+- User: `~/.config/opencode/oh-my-opencode-slim.json`
+- Project: `.opencode/oh-my-opencode-slim.json`
 
 ### 5. Tools
 

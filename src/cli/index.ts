@@ -29,9 +29,9 @@ function parseArgs(args: string[]): InstallArgs {
 
 function printHelp(): void {
   console.log(`
-oh-my-opencode-lite installer
+oh-my-opencode-slim installer
 
-Usage: bunx oh-my-opencode-lite install [OPTIONS]
+Usage: bunx oh-my-opencode-slim install [OPTIONS]
 
 Options:
   --antigravity=yes|no   Antigravity subscription (yes/no)
@@ -42,8 +42,8 @@ Options:
   -h, --help             Show this help message
 
 Examples:
-  bunx oh-my-opencode-lite install
-  bunx oh-my-opencode-lite install --no-tui --antigravity=yes --openai=yes --cerebras=no
+  bunx oh-my-opencode-slim install
+  bunx oh-my-opencode-slim install --no-tui --antigravity=yes --openai=yes --cerebras=no
 `)
 }
 
