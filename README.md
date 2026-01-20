@@ -15,16 +15,11 @@
 > **[Antigravity](https://antigravity.google) subscription recommended.** The pantheon is tuned for Antigravity's model routing. Other providers work, but you'll get the best experience with Antigravity.
 
 <div align="center">
-  <a href="https://x.com/alvinunreal" target="_blank" rel="noopener noreferrer">
-    <img src="https://img.shields.io/badge/%20%40alvinunreal-000000?style=for-the-badge&logo=x&logoColor=white" alt="@alvinunreal on X" />
-  </a>
-</div>
-
-<div align="center">
-
-**⭐ If this project helps you, please star it on GitHub!**
 
 [![GitHub Stars](https://img.shields.io/github/stars/alvinunreal/oh-my-opencode-slim?style=for-the-badge&logo=github&logoColor=white)](https://github.com/alvinunreal/oh-my-opencode-slim)
+<a href="https://x.com/alvinunreal" target="_blank" rel="noopener noreferrer">
+  <img src="https://img.shields.io/badge/%20%40alvinunreal-000000?style=for-the-badge&logo=x&logoColor=white" alt="@alvinunreal on X" />
+</a>
 
 </div>
 
