@@ -5,7 +5,8 @@ one specific piece of work. The worker runs as an orchestrator in a real child
 session, completes the requested task, and sends a structured summary back to
 the original conversation.
 
-Use it when you want to offload a focused task without losing the main thread.
+Use it when a bounded, context-heavy task only needs to return a compact result
+to the main thread.
 
 ## Usage
 
