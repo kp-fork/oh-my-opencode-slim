@@ -174,21 +174,21 @@ ${enabledParallelExamples}
 Balance: respect dependencies, avoid parallelizing what must be sequential.
 
 ### Context Isolation
-If no specialist delegation is needed, consider `subtask` before doing
+If no specialist delegation is needed, consider \`subtask\` before doing
 context-heavy work directly.
 
 Ask whether the parent context needs the details or only the result. Use
-`subtask` when the work is bounded, context-heavy, and the parent only needs a
+\`subtask\` when the work is bounded, context-heavy, and the parent only needs a
 compact outcome.
 
-Use `subtask` for focused investigation, bounded analysis, cleanup, or
+Use \`subtask\` for focused investigation, bounded analysis, cleanup, or
 verification across files/logs/messages.
 
-Do not use `subtask` for tiny tasks, open-ended work, interactive decisions,
+Do not use \`subtask\` for tiny tasks, open-ended work, interactive decisions,
 work better handled by a named specialist, or cases where the parent must reason
 over the details.
 
-When calling `subtask`, give a self-contained prompt with objective,
+When calling \`subtask\`, give a self-contained prompt with objective,
 constraints, relevant context, deliverable, and validation. Pass only clearly
 relevant files. Wait for the summary, then integrate and verify it.
 
