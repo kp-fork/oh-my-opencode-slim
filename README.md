@@ -1,6 +1,10 @@
 <div align="center">
-  <img src="img/team.jpeg" alt="Pantheon agents" style="border-radius: 10px;">
-  <p><i>Seven divine beings emerged from the dawn of code, each an immortal master of their craft await your command to forge order from chaos and build what was once thought impossible.</i></p>
+  <a href="https://github.com/alvinunreal/oh-my-opencode-slim/stargazers">
+    <img src="img/4k.png" alt="4K GitHub Stars Milestone" style="border-radius: 10px;">
+  </a>
+  <h3>🎉 4,000+ Stars! Thank you! 🎉</h3>
+  <p><i>We are incredibly grateful to our community for helping us reach this milestone.<br>The Pantheon grows stronger every day because of your feedback, contributions, and support!</i></p>
+
   <p><b>Open Multi Agent Suite</b> · Mix any models · Auto delegate tasks</p>
 
   <p><sub>by <b>Boring Dystopia Development</b></sub></p>
