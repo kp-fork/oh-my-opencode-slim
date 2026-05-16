@@ -20,6 +20,7 @@ import {
   createApplyPatchHook,
   createAutoUpdateCheckerHook,
   createChatHeadersHook,
+  createDeepworkCommandHook,
   createDelegateTaskRetryHook,
   createFilterAvailableSkillsHook,
   createGoalHook,
@@ -135,6 +136,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let jsonErrorRecoveryHook: ReturnType<typeof createJsonErrorRecoveryHook>;
   let foregroundFallback: ForegroundFallbackManager;
   let todoContinuationHook: ReturnType<typeof createTodoContinuationHook>;
+  let deepworkCommandHook: ReturnType<typeof createDeepworkCommandHook>;
   let goalHook: ReturnType<typeof createGoalHook>;
   let taskSessionManagerHook: ReturnType<typeof createTaskSessionManagerHook>;
   let backgroundJobBoard: BackgroundJobBoard;
@@ -308,6 +310,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       autoEnableThreshold: config.todoContinuation?.autoEnableThreshold ?? 4,
       backgroundJobBoard,
     });
+    deepworkCommandHook = createDeepworkCommandHook();
     goalHook = createGoalHook(ctx, config, {
       getAgentName: (sessionID) => sessionAgentMap.get(sessionID),
     });
@@ -732,6 +735,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
       interviewManager.registerCommand(opencodeConfig);
       goalHook.registerCommand(opencodeConfig);
+      deepworkCommandHook.registerCommand(opencodeConfig);
       presetManager.registerCommand(opencodeConfig);
     },
 
@@ -948,6 +952,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       );
 
       await goalHook.handleCommandExecuteBefore(
+        input as {
+          command: string;
+          sessionID: string;
+          arguments: string;
+        },
+        output as { parts: Array<{ type: string; text?: string }> },
+      );
+
+      await deepworkCommandHook.handleCommandExecuteBefore(
         input as {
           command: string;
           sessionID: string;

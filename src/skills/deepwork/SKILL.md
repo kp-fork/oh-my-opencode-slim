@@ -25,6 +25,8 @@ Required behavior:
 - execute phase by phase with specialist delegation where useful;
 - after each phase, validate, update the deepwork file, ask `@oracle` to review
   the phase result, fix actionable issues, then continue;
+- ask `@oracle` phase reviews to include simplify/readability feedback alongside
+  correctness, blockers, risks, and plan adherence;
 - finish with final validation and a concise summary.
 
 ## Deepwork File
@@ -77,7 +79,10 @@ Use the V2 scheduler model throughout:
   results are unreconciled.
 
 `@oracle` owns review and risk assessment. It should review plans and completed
-phase outputs, not become the default implementer.
+phase outputs, not become the default implementer. For phase reviews, explicitly
+ask oracle to use its simplify skill when available and report readability,
+maintainability, and unnecessary-complexity findings separately from blocking
+correctness issues.
 
 ## Lightweight Judgment
 
