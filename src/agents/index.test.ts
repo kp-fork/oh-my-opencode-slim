@@ -146,6 +146,12 @@ describe('orchestrator agent', () => {
     );
   });
 
+  test('orchestrator is allowed to invoke cancel_task', () => {
+    const agents = createAgents();
+    const orchestrator = agents.find((a) => a.name === 'orchestrator');
+    expect((orchestrator?.config.permission as any).cancel_task).toBe('allow');
+  });
+
   test('orchestrator accepts overrides', () => {
     const config: PluginConfig = {
       agents: {
@@ -304,6 +310,16 @@ describe('tool permissions', () => {
     const agents = createAgents();
     const councillor = agents.find((a) => a.name === 'councillor');
     expect((councillor?.config.permission as any).council_session).toBe('deny');
+  });
+
+  test('subagents are denied access to cancel_task', () => {
+    const agents = createAgents({
+      council: councilConfig(),
+    });
+    for (const name of ['oracle', 'explorer', 'fixer', 'council']) {
+      const agent = agents.find((a) => a.name === name);
+      expect((agent?.config.permission as any).cancel_task).toBe('deny');
+    }
   });
 });
 

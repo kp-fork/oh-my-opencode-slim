@@ -28,12 +28,13 @@ V2 requires OpenCode with native background subagents enabled:
 OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true opencode
 ```
 
-The required native tools are:
+The required native/background-control tools are:
 
 | Tool | Purpose |
 |------|---------|
 | `task(..., background: true)` | Start a specialist in the background and immediately return a task ID |
-| `task_status` | Poll or wait for a background task result |
+| `task_status` | Poll or wait for a background task result when needed |
+| `cancel_task` | Plugin-provided tool to cancel a tracked background task by task ID or Background Job Board alias |
 
 If these are not available, V2 should fail loudly instead of falling back to the
 legacy blocking orchestration model.
@@ -75,7 +76,7 @@ Track task IDs and ownership
   ↓
 Continue only independent coordination work
   ↓
-Poll / wait with task_status
+Wait for hook-driven completion or use task_status when needed
   ↓
 Reconcile results and resolve conflicts
   ↓
@@ -137,9 +138,10 @@ Rules:
 - Review tasks can run in parallel with read-only discovery, but not with edits
   they are supposed to review.
 
-### 4. Poll and reconcile
+### 4. Wait, cancel, and reconcile
 
-Background tasks are not complete until `task_status` says they are terminal.
+Background tasks are not complete until OpenCode injects their terminal result or
+`task_status` says they are terminal.
 
 The orchestrator should use `task_status` to:
 
@@ -147,6 +149,11 @@ The orchestrator should use `task_status` to:
 - check long-running tasks,
 - collect outputs before final response,
 - surface failures or blocked tasks clearly.
+
+The orchestrator should use `cancel_task` only when the user asks, or when a
+running lane is obsolete, wrong, or conflicts with a safer replacement plan.
+Cancellation is not rollback: if cancelling a writer, inspect and reconcile
+partial file changes before launching a replacement lane.
 
 **Note on reconciliation:** Idle-based reconciliation is a heuristic. A job marked
 as reconciled means its terminal result was injected into an orchestrator turn

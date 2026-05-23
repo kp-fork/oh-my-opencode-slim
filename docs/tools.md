@@ -34,6 +34,19 @@ Fast, structural code search and refactoring — more powerful than plain text g
 
 ---
 
+## Background Task Control
+
+| Tool | Description |
+|------|-------------|
+| `cancel_task` | Cancel a tracked background specialist task by native task ID or Background Job Board alias |
+
+`cancel_task` is orchestrator-only. It only cancels background tasks tracked for
+the current orchestrator session, and it does not roll back partial edits. After
+cancelling a write-capable task, inspect and reconcile file changes before
+launching replacement work.
+
+---
+
 ## Formatters
 
 OpenCode automatically formats files after they are written or edited, using language-specific formatters. No manual step needed.

@@ -224,6 +224,122 @@ describe('BackgroundJobBoard', () => {
     });
   });
 
+  test('resolves task IDs and aliases within parent scope', () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'ses_1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+    });
+    board.registerLaunch({
+      taskID: 'ses_2',
+      parentSessionID: 'parent-2',
+      agent: 'explorer',
+    });
+
+    expect(board.resolve('parent-1', 'ses_1')?.taskID).toBe('ses_1');
+    expect(board.resolve('parent-1', 'exp-1')?.taskID).toBe('ses_1');
+    expect(board.resolve('parent-2', 'exp-1')?.taskID).toBe('ses_2');
+    expect(board.resolve('parent-1', 'ses_2')).toBeUndefined();
+  });
+
+  test('marks running jobs as cancelled and unreconciled', () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'ses_1',
+      parentSessionID: 'parent-1',
+      agent: 'fixer',
+      now: 100,
+    });
+
+    const cancelled = board.markCancelled('ses_1', 'obsolete lane', 200);
+
+    expect(cancelled).toMatchObject({
+      state: 'cancelled',
+      timedOut: false,
+      terminalUnreconciled: true,
+      completedAt: 200,
+      resultSummary: 'cancelled: obsolete lane',
+    });
+    expect(board.hasTerminalUnreconciled('parent-1')).toBe(true);
+    expect(board.formatForPrompt('parent-1')).toContain(
+      'fix-1 / ses_1 / fixer / cancelled, unreconciled',
+    );
+  });
+
+  test('markCancelled does not mutate already terminal jobs', () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'ses_1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+    });
+    board.updateStatus({
+      taskID: 'ses_1',
+      state: 'completed',
+      resultSummary: 'done',
+    });
+
+    board.markCancelled('ses_1', 'too late');
+
+    expect(board.get('ses_1')).toMatchObject({
+      state: 'completed',
+      resultSummary: 'done',
+    });
+  });
+
+  test('stale running status cannot reopen terminal jobs', () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'ses_1',
+      parentSessionID: 'parent-1',
+      agent: 'fixer',
+    });
+    board.markCancelled('ses_1', 'obsolete');
+
+    board.updateStatus({
+      taskID: 'ses_1',
+      state: 'running',
+      timedOut: true,
+    });
+
+    expect(board.get('ses_1')).toMatchObject({
+      state: 'cancelled',
+      terminalUnreconciled: true,
+      timedOut: false,
+    });
+  });
+
+  test('cancelled jobs ignore late non-cancelled terminal statuses', () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'ses_1',
+      parentSessionID: 'parent-1',
+      agent: 'fixer',
+    });
+    board.markCancelled('ses_1', 'user requested');
+
+    board.updateStatus({
+      taskID: 'ses_1',
+      state: 'error',
+      resultSummary: 'request cancelled upstream',
+    });
+    expect(board.get('ses_1')).toMatchObject({
+      state: 'cancelled',
+      resultSummary: 'cancelled: user requested',
+    });
+
+    board.updateStatus({
+      taskID: 'ses_1',
+      state: 'completed',
+      resultSummary: 'late completion',
+    });
+    expect(board.get('ses_1')).toMatchObject({
+      state: 'cancelled',
+      resultSummary: 'cancelled: user requested',
+    });
+  });
+
   test('stale status updates cannot reopen already reconciled jobs', () => {
     const board = new BackgroundJobBoard();
     board.registerLaunch({

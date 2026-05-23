@@ -103,8 +103,12 @@ export class BackgroundJobBoard {
     const existing = this.jobs.get(input.taskID);
     if (!existing) return undefined;
 
-    // Guard: stale status updates cannot reopen already reconciled jobs
-    if (existing.state === 'reconciled') {
+    // Guard: stale status updates cannot reopen already terminal jobs.
+    if (
+      existing.state === 'reconciled' ||
+      (existing.state === 'cancelled' && input.state !== 'cancelled') ||
+      (TERMINAL_STATES.has(existing.state) && input.state === 'running')
+    ) {
       return existing;
     }
 
@@ -162,8 +166,43 @@ export class BackgroundJobBoard {
     return updated;
   }
 
+  markCancelled(
+    taskID: string,
+    reason?: string,
+    now = Date.now(),
+  ): BackgroundJobRecord | undefined {
+    const existing = this.jobs.get(taskID);
+    if (!existing) return undefined;
+    if (existing.state === 'reconciled') return existing;
+    if (TERMINAL_STATES.has(existing.state)) return existing;
+
+    const summary = normalizeCancelReason(reason);
+    const updated: BackgroundJobRecord = {
+      ...existing,
+      state: 'cancelled',
+      timedOut: false,
+      terminalUnreconciled: true,
+      updatedAt: now,
+      completedAt: existing.completedAt ?? now,
+      resultSummary: summary,
+    };
+
+    this.jobs.set(taskID, updated);
+    return updated;
+  }
+
   get(taskID: string): BackgroundJobRecord | undefined {
     return this.jobs.get(taskID);
+  }
+
+  resolve(
+    parentSessionID: string,
+    taskIDOrAlias: string,
+  ): BackgroundJobRecord | undefined {
+    const value = taskIDOrAlias.trim();
+    return this.list(parentSessionID).find(
+      (job) => job.taskID === value || job.alias === value,
+    );
   }
 
   list(parentSessionID?: string): BackgroundJobRecord[] {
@@ -249,4 +288,9 @@ function singleLine(value: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= 160) return normalized;
   return `${normalized.slice(0, 157)}...`;
+}
+
+function normalizeCancelReason(reason?: string): string {
+  const normalized = reason?.replace(/\s+/g, ' ').trim();
+  return normalized ? `cancelled: ${normalized}` : 'cancelled';
 }

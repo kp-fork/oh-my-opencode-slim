@@ -214,6 +214,8 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
   2. dependent: wait/poll,
   3. no useful independent work: stop and let hook-driven completion resume.
 - Before editing files or spawning another writer, compare against running job scopes.
+- Use \`cancel_task\` only when the user asks, or when a running lane is obsolete, wrong, or conflicts with a safer replacement plan.
+- Cancellation is not rollback: if cancelling a writer, inspect and reconcile partial file changes before launching a replacement lane.
 - Never finalize work that depends on unresolved background jobs.
 
 ### Session Reuse

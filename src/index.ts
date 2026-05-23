@@ -42,6 +42,7 @@ import {
 import {
   ast_grep_replace,
   ast_grep_search,
+  createCancelTaskTool,
   createCouncilTool,
   createPresetManager,
   createWebfetchTool,
@@ -144,6 +145,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let presetManager: ReturnType<typeof createPresetManager>;
   let divoomManager: ReturnType<typeof createDivoomManager>;
   let councilTools: Record<string, unknown>;
+  let cancelTaskTools: Record<string, unknown>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
   let rewriteDisplayNameMentions: ReturnType<
     typeof createDisplayNameMentionRewriter
@@ -325,9 +327,16 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     interviewManager = createInterviewManager(ctx, config);
     presetManager = createPresetManager(ctx, config);
     divoomManager = createDivoomManager(config.divoom);
+    cancelTaskTools = createCancelTaskTool({
+      client: ctx.client,
+      backgroundJobBoard,
+      shouldManageSession: (sessionID) =>
+        sessionAgentMap.get(sessionID) === 'orchestrator',
+    });
 
     toolCount =
       Object.keys(councilTools).length +
+      Object.keys(cancelTaskTools).length +
       Object.keys(todoContinuationHook.tool).length +
       1 + // webfetch
       2; // ast_grep_search, ast_grep_replace
@@ -396,6 +405,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     tool: {
       ...councilTools,
+      ...cancelTaskTools,
       webfetch,
       ...todoContinuationHook.tool,
       ast_grep_search,
