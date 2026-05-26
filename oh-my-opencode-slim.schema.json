@@ -599,6 +599,17 @@
         }
       }
     },
+    "subtask": {
+      "type": "object",
+      "properties": {
+        "timeoutMs": {
+          "description": "Subtask worker timeout in ms. 0 disables the timeout. Defaults to 300000 (5 minutes).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400000
+        }
+      }
+    },
     "fallback": {
       "type": "object",
       "properties": {

@@ -57,6 +57,44 @@ describe('session utilities', () => {
     ).rejects.toThrow('Prompt timed out after 5ms');
   });
 
+  test('promptWithTimeout honors abort signal when timeout is disabled', async () => {
+    const controller = new AbortController();
+    const abort = mock(async () => ({}));
+    const prompt = mock(() => never());
+    const client = {
+      session: {
+        abort,
+        prompt,
+      },
+    } as any;
+
+    queueMicrotask(() => controller.abort());
+
+    await expect(
+      promptWithTimeout(
+        client,
+        { path: { id: 's1' }, body: { parts: [] } },
+        0,
+        controller.signal,
+      ),
+    ).rejects.toThrow('Prompt cancelled');
+  });
+
+  test('promptWithTimeout returns when prompt resolves with no timeout', async () => {
+    const abort = mock(async () => ({}));
+    const prompt = mock(async () => ({}));
+    const client = {
+      session: {
+        abort,
+        prompt,
+      },
+    } as any;
+
+    await expect(
+      promptWithTimeout(client, { path: { id: 's1' }, body: { parts: [] } }, 0),
+    ).resolves.toBeUndefined();
+  });
+
   test('abortSessionWithTimeout rejects if abort hangs', async () => {
     const client = {
       session: {

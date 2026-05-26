@@ -102,12 +102,8 @@ export async function promptWithTimeout(
 ): Promise<void> {
   if (signal?.aborted) throw new Error('Prompt cancelled');
 
-  if (timeoutMs <= 0) {
-    await client.session.prompt(args);
-    return;
-  }
-
   const sessionId = args.path.id;
+  const hasTimeout = timeoutMs > 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let onAbort: (() => void) | undefined;
 
@@ -115,25 +111,36 @@ export async function promptWithTimeout(
     const promptPromise = client.session.prompt(args);
     promptPromise.catch(() => {});
 
-    await Promise.race([
-      promptPromise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(
-            new OperationTimeoutError(`Prompt timed out after ${timeoutMs}ms`),
-          );
-        }, timeoutMs);
-      }),
-      new Promise<never>((_, reject) => {
-        if (!signal) return;
-        if (signal.aborted) {
-          reject(new Error('Prompt cancelled'));
-          return;
-        }
-        onAbort = () => reject(new Error('Prompt cancelled'));
-        signal.addEventListener('abort', onAbort, { once: true });
-      }),
-    ]);
+    const racers: Array<Promise<unknown>> = [promptPromise];
+
+    if (hasTimeout) {
+      racers.push(
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new OperationTimeoutError(
+                `Prompt timed out after ${timeoutMs}ms`,
+              ),
+            );
+          }, timeoutMs);
+        }),
+      );
+    }
+
+    if (signal) {
+      racers.push(
+        new Promise<never>((_, reject) => {
+          if (signal.aborted) {
+            reject(new Error('Prompt cancelled'));
+            return;
+          }
+          onAbort = () => reject(new Error('Prompt cancelled'));
+          signal.addEventListener('abort', onAbort, { once: true });
+        }),
+      );
+    }
+
+    await Promise.race(racers);
   } catch (error) {
     if (error instanceof OperationTimeoutError) {
       try {

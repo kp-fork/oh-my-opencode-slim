@@ -204,6 +204,7 @@ export function mergePluginConfigs(
     divoom: deepMerge(base.divoom, override.divoom),
     fallback: deepMerge(base.fallback, override.fallback),
     council: deepMerge(base.council, override.council),
+    subtask: deepMerge(base.subtask, override.subtask),
   };
 }
 

@@ -695,6 +695,26 @@ describe('deepMerge behavior', () => {
     const config = loadPluginConfig(projectDir);
     expect(config.fallback?.chains.writing).toEqual(['openai/gpt-5.5']);
   });
+
+  test('empty project subtask block does not clobber user subtask.timeoutMs', () => {
+    const userOpencodeDir = path.join(userConfigDir, 'opencode');
+    fs.mkdirSync(userOpencodeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userOpencodeDir, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ subtask: { timeoutMs: 1800000 } }),
+    );
+
+    const projectDir = path.join(tempDir, 'project');
+    const projectConfigDir = path.join(projectDir, '.opencode');
+    fs.mkdirSync(projectConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectConfigDir, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ subtask: {} }),
+    );
+
+    const config = loadPluginConfig(projectDir);
+    expect(config.subtask?.timeoutMs).toBe(1800000);
+  });
 });
 
 describe('preset resolution', () => {
