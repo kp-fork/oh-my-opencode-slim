@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ModelEntry } from '../config/schema';
+import { normalizeFallbackChainsForPreset } from './fallback-chains';
 
 /**
  * Test the model array resolution logic that runs in the config hook.
@@ -79,12 +80,14 @@ describe('fallback.chains merging for foreground agents', () => {
     modelArray?: Array<{ id: string; variant?: string }>;
     currentModel?: string;
     chainModels?: string[];
+    preset?: string;
     fallbackEnabled?: boolean;
   }): string | null {
     const {
       modelArray,
       currentModel,
       chainModels,
+      preset,
       fallbackEnabled = true,
     } = opts;
 
@@ -94,11 +97,18 @@ describe('fallback.chains merging for foreground agents', () => {
       : [];
 
     if (fallbackEnabled && chainModels && chainModels.length > 0) {
+      const normalized = normalizeFallbackChainsForPreset(
+        {
+          [currentModel ?? 'orchestrator']: chainModels,
+        },
+        preset,
+      );
+      const normalizedModels = Object.values(normalized)[0] ?? [];
       if (effectiveArray.length === 0 && currentModel) {
         effectiveArray.push({ id: currentModel });
       }
       const seen = new Set(effectiveArray.map((m) => m.id));
-      for (const chainModel of chainModels) {
+      for (const chainModel of normalizedModels) {
         if (!seen.has(chainModel)) {
           seen.add(chainModel);
           effectiveArray.push({ id: chainModel });
@@ -172,5 +182,82 @@ describe('fallback.chains merging for foreground agents', () => {
       ],
     });
     expect(result).toBe('github-copilot/claude-opus-4.6');
+  });
+
+  test('normalizes scoped fallback chains for the active preset', () => {
+    const result = normalizeFallbackChainsForPreset(
+      {
+        'gpt-plus-max:orchestrator': [
+          'openai/o3',
+          'anthropic/claude-sonnet-4-6',
+        ],
+        'gpt-plus-max:oracle': ['anthropic/claude-opus-4-5'],
+      },
+      'gpt-plus-max',
+    );
+
+    expect(result).toEqual({
+      orchestrator: ['openai/o3', 'anthropic/claude-sonnet-4-6'],
+      oracle: ['anthropic/claude-opus-4-5'],
+    });
+  });
+
+  test('ignores scoped fallback chains for other presets', () => {
+    const result = normalizeFallbackChainsForPreset(
+      {
+        'gpt-plus-max:orchestrator': ['openai/o3'],
+        orchestrator: ['anthropic/claude-sonnet-4-6'],
+      },
+      'other-preset',
+    );
+
+    expect(result).toEqual({
+      orchestrator: ['anthropic/claude-sonnet-4-6'],
+    });
+  });
+
+  test('does not emit scoped keys in normalized output', () => {
+    const result = normalizeFallbackChainsForPreset(
+      {
+        'gpt-plus-max:orchestrator': ['openai/o3'],
+      },
+      'gpt-plus-max',
+    );
+
+    expect(Object.keys(result).some((key) => key.includes(':'))).toBe(false);
+  });
+
+  test('ignores empty fallback chain agent names', () => {
+    const result = normalizeFallbackChainsForPreset(
+      {
+        '': ['openai/o3'],
+        'gpt-plus-max:': ['anthropic/claude-sonnet-4-6'],
+        orchestrator: ['ustc-deepseek/deepseek-v4-pro'],
+      },
+      'gpt-plus-max',
+    );
+
+    expect(result).toEqual({
+      orchestrator: ['ustc-deepseek/deepseek-v4-pro'],
+    });
+    expect(result).not.toHaveProperty('');
+  });
+
+  test('runtime preset takes precedence over config preset for scoped fallback chains', () => {
+    const configPreset = 'cheap';
+    const runtimePreset = 'powerful';
+    const activePreset = runtimePreset ?? configPreset ?? null;
+
+    const result = normalizeFallbackChainsForPreset(
+      {
+        'cheap:orchestrator': ['cheap/model'],
+        'powerful:orchestrator': ['powerful/model'],
+      },
+      activePreset,
+    );
+
+    expect(result).toEqual({
+      orchestrator: ['powerful/model'],
+    });
   });
 });

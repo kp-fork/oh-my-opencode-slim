@@ -9,6 +9,7 @@ import {
 } from './config';
 import { parseList } from './config/agent-mcps';
 import { AGENT_ALIASES } from './config/constants';
+import { normalizeFallbackChainsForPreset } from './config/fallback-chains';
 import {
   getActiveRuntimePreset,
   getPreviousRuntimePreset,
@@ -202,11 +203,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         runtimeChains[agentDef.name] = agentDef._modelArray.map((m) => m.id);
       }
     }
+    const activePresetForFallback =
+      getActiveRuntimePreset() ?? config.preset ?? null;
+
     if (config.fallback?.enabled !== false) {
-      const chains =
-        (config.fallback?.chains as Record<string, string[] | undefined>) ?? {};
+      const chains = normalizeFallbackChainsForPreset(
+        (config.fallback?.chains as Record<string, string[] | undefined>) ?? {},
+        activePresetForFallback,
+      );
       for (const [agentName, chainModels] of Object.entries(chains)) {
-        if (!chainModels?.length) continue;
         const existing = runtimeChains[agentName] ?? [];
         const seen = new Set(existing);
         for (const m of chainModels) {
@@ -451,10 +456,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       // Runtime failover on API errors (e.g. rate limits
       // mid-conversation) is handled separately by
       // ForegroundFallbackManager via the event hook.
+      const activePresetForFallback =
+        getActiveRuntimePreset() ?? config.preset ?? null;
       const fallbackChainsEnabled = config.fallback?.enabled !== false;
       const fallbackChains = fallbackChainsEnabled
-        ? ((config.fallback?.chains as Record<string, string[] | undefined>) ??
-          {})
+        ? normalizeFallbackChainsForPreset(
+            (config.fallback?.chains as Record<string, string[] | undefined>) ??
+              {},
+            activePresetForFallback,
+          )
         : {};
 
       // Build effective model arrays: seed from _modelArray, then append
