@@ -1370,6 +1370,78 @@ describe('task-session-manager hook', () => {
     expect(messages.messages[0].parts[0].text).toBe('continue');
   });
 
+  test('completed foreground XML task output becomes reusable after reconciliation', async () => {
+    const { hook } = createHook();
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { args: { subagent_type: 'fixer', description: 'reuse probe' } },
+    );
+    await hook['tool.execute.after'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      {
+        output: [
+          '<task id="ses_child" state="completed">',
+          '<task_result>',
+          'done',
+          '</task_result>',
+          '</task>',
+        ].join('\n'),
+      },
+    );
+
+    const unreconciled = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, unreconciled);
+    expect(unreconciled.messages[0].parts[0].text).toContain(
+      'fix-1 / ses_child / fixer / completed, unreconciled',
+    );
+
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
+      },
+    });
+
+    const reusable = createMessages('parent-1', 'reuse');
+    await hook['experimental.chat.messages.transform']({}, reusable);
+    expect(reusable.messages[0].parts[0].text).toContain(
+      'fix-1 / ses_child / fixer / completed, reconciled',
+    );
+
+    const resume = { args: { subagent_type: 'fixer', task_id: 'fix-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
+      resume,
+    );
+    expect(resume.args.task_id).toBe('ses_child');
+  });
+
+  test('preserves explicit raw session ids when reusable board misses', async () => {
+    const { hook } = createHook();
+    const resume = {
+      args: { subagent_type: 'fixer', task_id: 'ses_existing' },
+    };
+
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
+      resume,
+    );
+
+    expect(resume.args.task_id).toBe('ses_existing');
+  });
+
+  test('still drops unknown reusable aliases', async () => {
+    const { hook } = createHook();
+    const resume = { args: { subagent_type: 'fixer', task_id: 'fix-99' } };
+
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
+      resume,
+    );
+
+    expect(resume.args.task_id).toBeUndefined();
+  });
+
   test('reads before and after launch attach with unique-line counts and caps', async () => {
     const { hook } = createHook({
       readContextMinLines: 5,

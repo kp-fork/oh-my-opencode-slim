@@ -19,6 +19,18 @@ describe('parseTaskIdFromTaskOutput', () => {
     expect(parseTaskIdFromTaskOutput(output)).toBe('session-abc-123');
   });
 
+  test('parses task id from XML task output', () => {
+    const output = [
+      '<task id="ses_123" state="completed">',
+      '<task_result>',
+      'done',
+      '</task_result>',
+      '</task>',
+    ].join('\n');
+
+    expect(parseTaskIdFromTaskOutput(output)).toBe('ses_123');
+  });
+
   test('returns undefined when task_id is absent', () => {
     const output = ['<task_result>', 'no task id here', '</task_result>'].join(
       '\n',
@@ -37,6 +49,22 @@ describe('parseTaskLaunchOutput', () => {
       '<task_result>',
       'Background task started.',
       '</task_result>',
+    ].join('\n');
+
+    expect(parseTaskLaunchOutput(output)).toEqual({
+      taskID: 'ses_123',
+      state: 'running',
+      result: 'Background task started.',
+    });
+  });
+
+  test('parses XML background task launch output', () => {
+    const output = [
+      '<task id="ses_123" state="running">',
+      '<task_result>',
+      'Background task started.',
+      '</task_result>',
+      '</task>',
     ].join('\n');
 
     expect(parseTaskLaunchOutput(output)).toEqual({
@@ -80,6 +108,23 @@ describe('parseTaskStatusOutput', () => {
       '<task_result>',
       'done',
       '</task_result>',
+    ].join('\n');
+
+    expect(parseTaskStatusOutput(output)).toEqual({
+      taskID: 'ses_123',
+      state: 'completed',
+      timedOut: false,
+      result: 'done',
+    });
+  });
+
+  test('parses XML completed status output with task result', () => {
+    const output = [
+      '<task id="ses_123" state="completed">',
+      '<task_result>',
+      'done',
+      '</task_result>',
+      '</task>',
     ].join('\n');
 
     expect(parseTaskStatusOutput(output)).toEqual({

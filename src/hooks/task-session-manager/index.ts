@@ -69,6 +69,7 @@ const BACKGROUND_JOB_BOARD_SENTINEL = 'SENTINEL: background-job-board-v2';
 const BACKGROUND_COMPLETION_COMPLETED = /^Background task completed: /;
 const BACKGROUND_COMPLETION_FAILED = /^Background task failed: /;
 const MAX_PROCESSED_INJECTED_COMPLETIONS = 500;
+const RAW_SESSION_ID_PATTERN = /^ses_[A-Za-z0-9_-]+$/;
 
 /**
  * Simple deterministic string hash for stable occurrence IDs.
@@ -624,6 +625,11 @@ export function createTaskSessionManagerHook(
       );
 
       if (!remembered) {
+        if (RAW_SESSION_ID_PATTERN.test(requested)) {
+          pendingCall.resumedTaskId = requested;
+          rememberPendingCall(pendingCall);
+          return;
+        }
         delete args.task_id;
         return;
       }
@@ -688,6 +694,43 @@ export function createTaskSessionManagerHook(
           contextFilesForPrompt(contextByTask.get(launch.taskID)),
         );
         pendingManagedTaskIds.add(launch.taskID);
+        return;
+      }
+
+      const status = parseTaskStatusOutput(output.output);
+      if (status) {
+        const existing = backgroundJobBoard.get(status.taskID);
+        const record =
+          existing ??
+          backgroundJobBoard.registerLaunch({
+            taskID: status.taskID,
+            parentSessionID: pending.parentSessionId,
+            agent: pending.agentType,
+            description: pending.label,
+            objective: pending.label,
+          });
+        const updated = backgroundJobBoard.updateStatus({
+          taskID: status.taskID,
+          state: status.state,
+          timedOut: status.timedOut,
+          resultSummary: status.result,
+        });
+        log('[task-session-manager] foreground task status registered', {
+          taskID: status.taskID,
+          alias: updated?.alias ?? record.alias,
+          parentSessionID: pending.parentSessionId,
+          agent: pending.agentType,
+          state: updated?.state ?? record.state,
+        });
+        if (pending.resumedTaskId && pending.resumedTaskId !== status.taskID) {
+          backgroundJobBoard.drop(pending.resumedTaskId);
+        }
+        pendingManagedTaskIds.delete(status.taskID);
+        const contextFiles = contextFilesForPrompt(
+          contextByTask.get(status.taskID),
+        );
+        backgroundJobBoard.addContext(status.taskID, contextFiles);
+        pruneContext();
         return;
       }
 

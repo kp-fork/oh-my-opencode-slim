@@ -230,6 +230,9 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 - When too much unrelated, and really needed, start a fresh session with the specialist
 - If multiple remembered sessions fit, prefer the most recently used matching session.
 - Prefer re-uses over creating new sessions all the time
+- When reusing a specialist session, you MUST pass the existing session or alias in the task tool's \`task_id\` argument. Saying "reuse" in prose is not enough.
+- If the Background Job Board lists \`fix-1 / ses_abc / fixer\`, call task with \`subagent_type: "fixer"\` and \`task_id: "fix-1"\` or \`task_id: "ses_abc"\`.
+- Do not leave \`task_id\` empty when intending to reuse; omitted or empty \`task_id\` creates a new specialist session.
 
 ### Validation routing
 - Validation is a workflow stage owned by the Orchestrator, not a separate specialist

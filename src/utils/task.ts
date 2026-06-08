@@ -30,6 +30,9 @@ const TRANSIENT_PROCESS_ERROR_TEXT = new Set([
 ]);
 
 export function parseTaskIdFromTaskOutput(output: string): string | undefined {
+  const xmlMatch = /<task\s+[^>]*\bid=["']([^"']+)["'][^>]*>/i.exec(output);
+  if (xmlMatch) return xmlMatch[1];
+
   const lines = output.split(/\r?\n/);
 
   for (const line of lines) {
@@ -94,6 +97,12 @@ export function classifyTaskStatusOutput(
 export function parseTaskStateFromOutput(
   output: string,
 ): TaskOutputState | undefined {
+  const xmlMatch =
+    /<task\s+[^>]*\bstate=["'](running|completed|error|cancelled)["'][^>]*>/i.exec(
+      output,
+    );
+  if (xmlMatch) return xmlMatch[1].toLowerCase() as TaskOutputState;
+
   for (const line of getTaskHeader(output).split(/\r?\n/)) {
     const match = /^state:\s*(running|completed|error|cancelled)\s*$/i.exec(
       line.trim(),
