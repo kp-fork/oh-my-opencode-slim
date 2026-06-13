@@ -94,6 +94,9 @@ Then:
 > [!TIP]
 > It's **recommended** to understand how background orchestration works. The **[Orchestrator prompt](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** contains the scheduler rules, specialist routing logic, and thresholds for when work should be assigned to background agents. You can always delegate manually by calling a subagent via: `@agentName <task>`
 
+> [!TIP]
+> Because background agents are now the default workflow, it is **highly recommended** to enable and configure **[Multiplexer Integration](docs/multiplexer-integration.md)**. It automatically opens each agent in a dedicated Tmux or Zellij pane, so you can watch specialists work live while the Orchestrator continues coordinating the session.
+
 The default generated configuration includes both `openai` and `opencode-go` presets.
 
 ```jsonc
