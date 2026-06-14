@@ -10,8 +10,7 @@ looks back over recent sessions, project notes, and existing agent assets, then
 recommends the smallest useful improvement: a skill, custom agent, command,
 configuration change, prompt rule, documentation playbook, or no change.
 
-The goal is not to generate more assets. The goal is to identify real repeated
-friction and suggest practical improvements with evidence.
+The goal is to identify real repeated friction and suggest practical improvements with evidence.
 
 ## When to Use
 
@@ -20,8 +19,7 @@ Use Reflect when the user asks to:
 - run `/reflect` or `/reflect <focus>`;
 - learn from recent sessions or repeated workflows;
 - find work they keep doing manually;
-- suggest new skills, custom agents, commands, prompt rules, or config changes;
-- improve their oh-my-opencode-slim setup based on actual usage;
+- improve their oh-my-opencode-slim setup based on actual usage using oh-my-opencode-slim skill;
 - review whether a recurring process should become a reusable playbook;
 - turn repeated workflow friction into a safer future default.
 
