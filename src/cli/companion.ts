@@ -21,7 +21,6 @@ export function getCompanionTarget(): string | null {
   const a = process.arch;
   if (p === 'darwin') {
     if (a === 'arm64') return 'aarch64-apple-darwin';
-    if (a === 'x64') return 'x86_64-apple-darwin';
   } else if (p === 'linux') {
     if (a === 'x64') return 'x86_64-unknown-linux-gnu';
     if (a === 'arm64') return 'aarch64-unknown-linux-gnu';

@@ -117,7 +117,6 @@ Current release assets are named:
 
 ```text
 oh-my-opencode-slim-companion-v0.1.2-aarch64-apple-darwin.tar.gz
-oh-my-opencode-slim-companion-v0.1.2-x86_64-apple-darwin.tar.gz
 oh-my-opencode-slim-companion-v0.1.2-x86_64-unknown-linux-gnu.tar.gz
 oh-my-opencode-slim-companion-v0.1.2-aarch64-unknown-linux-gnu.tar.gz
 oh-my-opencode-slim-companion-v0.1.2-x86_64-pc-windows-msvc.zip
@@ -126,7 +125,6 @@ oh-my-opencode-slim-companion-v0.1.2-x86_64-pc-windows-msvc.zip
 Supported installer targets:
 
 - macOS arm64: `aarch64-apple-darwin`
-- macOS x64: `x86_64-apple-darwin`
 - Linux x64: `x86_64-unknown-linux-gnu`
 - Linux arm64: `aarch64-unknown-linux-gnu`
 - Windows x64: `x86_64-pc-windows-msvc`
@@ -171,14 +169,13 @@ Build multiple targets by passing a comma-separated list:
 ```bash
 gh workflow run companion-release.yml \
   -f version=0.1.2 \
-  -f targets=macos-arm64,macos-x64,linux-x64,linux-arm64,windows-x64
+  -f targets=macos-arm64,linux-x64,linux-arm64,windows-x64
 ```
 
 Supported workflow target names:
 
 ```text
 macos-arm64
-macos-x64
 linux-x64
 linux-arm64
 windows-x64
