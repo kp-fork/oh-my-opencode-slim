@@ -336,4 +336,8 @@ See the [Multiplexer Integration Guide](multiplexer-integration.md) for more det
    rm -rf ~/.config/opencode/skills/simplify
    rm -rf ~/.config/opencode/skills/codemap
    rm -rf ~/.config/opencode/skills/clonedeps
+   rm -rf ~/.config/opencode/skills/deepwork
+   rm -rf ~/.config/opencode/skills/reflect
+   rm -rf ~/.config/opencode/skills/worktrees
+   rm -rf ~/.config/opencode/skills/oh-my-opencode-slim
    ```
