@@ -39,6 +39,7 @@ class AcpClient {
   private lastUpdate = Date.now();
   private authMethods: Array<Record<string, unknown>> = [];
   private active = false;
+  private activeRequests = 0;
 
   constructor(
     private name: string,
@@ -56,6 +57,10 @@ class AcpClient {
     });
     this.child.stderr.on('data', (chunk) => {
       this.errors.push(String(chunk));
+    });
+    this.child.stdin.on('error', (error) => {
+      this.errors.push(String(error));
+      this.rejectPending(error);
     });
     this.child.on('error', (error) => {
       this.rejectPending(error);
@@ -148,7 +153,7 @@ class AcpClient {
 
   private async drain(): Promise<void> {
     this.lastUpdate = Date.now();
-    while (Date.now() - this.lastUpdate < 100) {
+    while (this.activeRequests > 0 || Date.now() - this.lastUpdate < 100) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   }
@@ -179,7 +184,13 @@ class AcpClient {
       return;
     }
     if ('id' in message && 'method' in message) {
-      await this.handleRequest(message);
+      this.activeRequests++;
+      try {
+        await this.handleRequest(message);
+      } finally {
+        this.activeRequests--;
+        this.lastUpdate = Date.now();
+      }
       return;
     }
     if ('method' in message) this.handleNotification(message);
