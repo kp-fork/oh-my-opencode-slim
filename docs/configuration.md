@@ -105,6 +105,13 @@ Presets can also be switched at runtime without restarting using the `/preset` c
 | `agents.<customAgent>.prompt` | string | — | Full execution prompt for a custom agent |
 | `agents.<customAgent>.orchestratorPrompt` | string | — | Exact `@agent` block injected into the orchestrator prompt; must start with `@<agent-name>` |
 | `agents.<agent>.displayName` | string | — | Custom user-facing alias for the agent in the active config |
+| `acpAgents.<name>.command` | string | — | Command for an external ACP-compatible agent; creates a wrapper subagent named `<name>` |
+| `acpAgents.<name>.args` | string[] | `[]` | Arguments for the ACP agent command |
+| `acpAgents.<name>.env` | object | `{}` | Extra environment variables for the ACP subprocess |
+| `acpAgents.<name>.description` | string | — | Description shown to OpenCode and injected into the orchestrator routing prompt |
+| `acpAgents.<name>.wrapperModel` | string | fixer default | Cheap OpenCode model used by the wrapper subagent that calls `acp_run` |
+| `acpAgents.<name>.permissionMode` | string | `ask` | How ACP permission requests are handled: `ask`, `allow`, or `reject` |
+| `acpAgents.<name>.timeoutMs` | integer | `300000` | Timeout for a single ACP run in milliseconds |
 | `disabled_agents` | string[] | `["observer"]` | Agent names to disable globally. Set to `[]` to enable Observer; this is global, not per-preset |
 | `autoUpdate` | boolean | `true` | Automatically install plugin updates in the background; set to `false` for notification-only mode |
 | `multiplexer.type` | string | `"none"` | Multiplexer mode: `auto`, `tmux`, `zellij`, or `none` |
@@ -152,6 +159,39 @@ Presets can also be switched at runtime without restarting using the `/preset` c
 >     default-floating-position x=16 y=16 relative-to="bottom-right"
 > }
 > ```
+
+### ACP-connected agents
+
+Use `acpAgents` to expose external Agent Client Protocol servers as optional
+OpenCode subagents. The plugin creates a lightweight wrapper agent for each
+entry. The wrapper calls the built-in `acp_run` tool, which starts the ACP
+process, creates a session, sends the task, and returns the streamed result.
+
+```jsonc
+{
+  "acpAgents": {
+    "claude-research": {
+      "command": "claude-code-acp",
+      "args": [],
+      "description": "Claude Code subscription agent for deep research",
+      "wrapperModel": "openai/gpt-5.4-mini",
+      "permissionMode": "ask",
+      "timeoutMs": 300000
+    },
+    "gemini-acp": {
+      "command": "gemini",
+      "args": ["--experimental-acp"],
+      "description": "Gemini CLI through ACP"
+    }
+  }
+}
+```
+
+After restart, the orchestrator can delegate to `@claude-research` or
+`@gemini-acp`. Use safe names matching `^[a-z][a-z0-9_-]*$`; names cannot
+conflict with built-in or custom agents. `permissionMode` controls ACP
+permission requests, but the plugin still asks before launching the configured
+subprocess.
 
 ### Council configuration note
 

@@ -125,4 +125,51 @@ describe('custom-agent creation', () => {
       '@cleanup\n- Role: Cleanup specialist',
     );
   });
+
+  test('creates wrapper agents from acpAgents config', () => {
+    const config: PluginConfig = {
+      acpAgents: {
+        'claude-research': {
+          command: 'claude-code-acp',
+          args: [],
+          env: {},
+          timeoutMs: 300000,
+          permissionMode: 'ask',
+          description: 'Claude Code research via ACP',
+          wrapperModel: 'openai/gpt-5.4-mini',
+        },
+      },
+    };
+
+    const agents = createAgents(config);
+    const wrapper = agents.find((agent) => agent.name === 'claude-research');
+    const orchestrator = agents.find((agent) => agent.name === 'orchestrator');
+
+    expect(wrapper).toBeDefined();
+    expect(wrapper?.description).toBe('Claude Code research via ACP');
+    expect(wrapper?.config.model).toBe('openai/gpt-5.4-mini');
+    expect(wrapper?.config.prompt).toContain('acp_run');
+    expect(orchestrator?.config.prompt).toContain('@claude-research');
+  });
+
+  test('rejects acpAgents that conflict with custom agents', () => {
+    const config: PluginConfig = {
+      agents: {
+        bridge: { model: 'openai/gpt-5.4-mini' },
+      },
+      acpAgents: {
+        bridge: {
+          command: 'bridge-acp',
+          args: [],
+          env: {},
+          timeoutMs: 300000,
+          permissionMode: 'ask',
+        },
+      },
+    };
+
+    expect(() => createAgents(config)).toThrow(
+      "ACP agent 'bridge' conflicts with a custom agent of the same name",
+    );
+  });
 });

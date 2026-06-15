@@ -197,6 +197,31 @@ export const CompanionConfigSchema = z.object({
 
 export type CompanionConfig = z.infer<typeof CompanionConfigSchema>;
 
+export const AcpAgentPermissionModeSchema = z.enum(['ask', 'allow', 'reject']);
+
+export const AcpAgentConfigSchema = z
+  .object({
+    command: z.string().min(1),
+    args: z.array(z.string()).default([]),
+    env: z.record(z.string(), z.string()).default({}),
+    cwd: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    prompt: z.string().min(1).optional(),
+    orchestratorPrompt: z.string().min(1).optional(),
+    wrapperModel: ProviderModelIdSchema.optional(),
+    timeoutMs: z.number().int().min(1000).max(900000).default(300000),
+    permissionMode: AcpAgentPermissionModeSchema.default('ask'),
+  })
+  .strict();
+
+export const AcpAgentsConfigSchema = z.record(z.string(), AcpAgentConfigSchema);
+
+export type AcpAgentPermissionMode = z.infer<
+  typeof AcpAgentPermissionModeSchema
+>;
+export type AcpAgentConfig = z.infer<typeof AcpAgentConfigSchema>;
+export type AcpAgentsConfig = z.infer<typeof AcpAgentsConfigSchema>;
+
 function validateCustomOnlyPromptFields(
   overrides: Record<string, z.infer<typeof AgentOverrideConfigSchema>>,
   ctx: z.RefinementCtx,
@@ -262,6 +287,7 @@ export const PluginConfigSchema = z
     fallback: FailoverConfigSchema.optional(),
     council: CouncilConfigSchema.optional(),
     companion: CompanionConfigSchema.optional(),
+    acpAgents: AcpAgentsConfigSchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.agents) {

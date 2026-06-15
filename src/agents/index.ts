@@ -5,6 +5,7 @@ import {
   ALL_AGENT_NAMES,
   DEFAULT_DISABLED_AGENTS,
   DEFAULT_MODELS,
+  getAcpAgentNames,
   getAgentOverride,
   getCustomAgentNames,
   loadAgentPrompt,
@@ -43,6 +44,40 @@ const SAFE_AGENT_ALIAS_RE = /^[a-z][a-z0-9_-]*$/i;
 function normalizeDisplayName(displayName: string): string {
   const trimmed = displayName.trim();
   return trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+}
+
+function buildAcpAgentDefinition(
+  name: string,
+  config: NonNullable<PluginConfig['acpAgents']>[string],
+): AgentDefinition {
+  const description =
+    config.description ?? `External ACP agent '${name}' via ${config.command}`;
+  const prompt =
+    config.prompt ??
+    [
+      `You are the ${name} ACP wrapper agent.`,
+      '',
+      'Your only job is to send the user task to the configured external ACP agent using the acp_run tool, then return the ACP agent result.',
+      `Always call acp_run with agent: ${JSON.stringify(name)} and pass the full user task as prompt.`,
+      'Do not edit files yourself unless the ACP result explicitly asks you to report a local follow-up to the orchestrator.',
+    ].join('\n');
+
+  return {
+    name,
+    description,
+    config: {
+      model:
+        config.wrapperModel ??
+        DEFAULT_MODELS.fixer ??
+        DEFAULT_MODELS.librarian ??
+        DEFAULT_MODELS.orchestrator,
+      temperature: 0,
+      prompt,
+      permission: {
+        acp_run: 'allow',
+      },
+    },
+  } as AgentDefinition;
 }
 
 function isSafeDisplayName(displayName: string): boolean {
@@ -300,6 +335,27 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     ];
   });
 
+  const acpAgentNames = getAcpAgentNames(config)
+    .map(normalizeCustomAgentName)
+    .filter((name) => name.length > 0)
+    .filter((name) => {
+      if (!isSafeCustomAgentName(name)) {
+        throw new Error(`Unsafe ACP agent name '${name}'`);
+      }
+      if (customAgentNames.includes(name)) {
+        throw new Error(
+          `ACP agent '${name}' conflicts with a custom agent of the same name`,
+        );
+      }
+      return !disabled.has(name);
+    });
+
+  const protoAcpAgents = acpAgentNames.map((name) => {
+    const acp = config?.acpAgents?.[name];
+    if (!acp) throw new Error(`ACP agent '${name}' is missing config`);
+    return buildAcpAgentDefinition(name, acp);
+  });
+
   // 2. Apply overrides and default permissions to built-in subagents
   const builtInSubAgents = protoSubAgents.map((agent) => {
     const override = getAgentOverride(config, agent.name);
@@ -334,7 +390,16 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     return agent;
   });
 
-  const allSubAgents = [...builtInSubAgents, ...customSubAgents];
+  const acpSubAgents = protoAcpAgents.map((agent) => {
+    applyDefaultPermissions(agent);
+    return agent;
+  });
+
+  const allSubAgents = [
+    ...builtInSubAgents,
+    ...customSubAgents,
+    ...acpSubAgents,
+  ];
 
   // 3. Create Orchestrator (with its own overrides and custom prompts)
   // DEFAULT_MODELS.orchestrator is undefined; model is resolved via override or
@@ -373,6 +438,19 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     })
     .filter((prompt): prompt is string => Boolean(prompt));
 
+  const acpOrchestratorPrompts = acpSubAgents.map((agent) => {
+    const acp = config?.acpAgents?.[agent.name];
+    if (acp?.orchestratorPrompt) return acp.orchestratorPrompt;
+    return [
+      `@${agent.name}`,
+      `- Lane: External ACP-connected agent (${acp?.command ?? 'unknown command'})`,
+      `- Role: ${agent.description ?? `External ACP agent ${agent.name}`}`,
+      '- **Delegate when:** The user explicitly asks for this ACP-backed agent, or the task matches its role and benefits from software/subscription-specific capabilities outside OpenCode.',
+      '- **Do not delegate when:** The built-in specialists can handle the task more directly or local file ownership would conflict with another writer lane.',
+      '- **Result handling:** Treat returned output as external-agent work. Reconcile any reported file changes before continuing.',
+    ].join('\n');
+  });
+
   // Validate display names
   const usedDisplayNames = new Set<string>();
   for (const [, displayName] of displayNameMap) {
@@ -403,8 +481,13 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   // Inject display names into orchestrator prompt (complete map)
   injectDisplayNames(orchestrator, displayNameMap);
 
-  if (customOrchestratorPrompts.length > 0) {
-    const rewrittenPrompts = customOrchestratorPrompts.map((promptText) => {
+  const extraOrchestratorPrompts = [
+    ...customOrchestratorPrompts,
+    ...acpOrchestratorPrompts,
+  ];
+
+  if (extraOrchestratorPrompts.length > 0) {
+    const rewrittenPrompts = extraOrchestratorPrompts.map((promptText) => {
       let text = promptText;
       for (const [internalName, displayName] of displayNameMap) {
         text = text.replace(
@@ -524,8 +607,12 @@ export function getEnabledAgentNames(config?: PluginConfig): string[] {
   const customAgentNames = getCustomAgentNames(config).filter(
     (name) => !disabled.has(name),
   );
+  const acpAgentNames = getAcpAgentNames(config).filter(
+    (name) => !disabled.has(name),
+  );
   return [
     ...ALL_AGENT_NAMES.filter((name) => !disabled.has(name)),
     ...customAgentNames,
+    ...acpAgentNames,
   ];
 }

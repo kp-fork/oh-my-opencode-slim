@@ -6,4 +6,8 @@ export {
   loadPluginConfig,
 } from './loader';
 export * from './schema';
-export { getAgentOverride, getCustomAgentNames } from './utils';
+export {
+  getAcpAgentNames,
+  getAgentOverride,
+  getCustomAgentNames,
+} from './utils';

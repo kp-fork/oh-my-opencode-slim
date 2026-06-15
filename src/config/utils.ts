@@ -40,3 +40,7 @@ export function getCustomAgentNames(
     return !(ALL_AGENT_NAMES as readonly string[]).includes(name);
   });
 }
+
+export function getAcpAgentNames(config: PluginConfig | undefined): string[] {
+  return Object.keys(config?.acpAgents ?? {});
+}

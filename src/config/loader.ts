@@ -203,6 +203,7 @@ export function mergePluginConfigs(
     backgroundJobs: deepMerge(base.backgroundJobs, override.backgroundJobs),
     fallback: deepMerge(base.fallback, override.fallback),
     council: deepMerge(base.council, override.council),
+    acpAgents: deepMerge(base.acpAgents, override.acpAgents),
     companion: deepMerge(
       base.companion as Record<string, unknown> | undefined,
       override.companion as Record<string, unknown> | undefined,
