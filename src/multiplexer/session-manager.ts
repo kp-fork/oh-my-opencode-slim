@@ -17,7 +17,6 @@ interface TrackedSession {
   directory: string;
   ownerInstanceId: string;
   createdAt: number;
-  lastSeenAt: number;
 }
 
 interface KnownSession {
@@ -223,7 +222,6 @@ export class MultiplexerSessionManager {
         directory,
         ownerInstanceId: this.instanceId,
         createdAt: now,
-        lastSeenAt: now,
       });
 
       log('[multiplexer-session-manager] pane spawned', {
@@ -358,8 +356,6 @@ export class MultiplexerSessionManager {
         if (!status) {
           continue;
         }
-
-        tracked.lastSeenAt = now;
 
         if (status.type !== 'idle') {
           continue;
@@ -583,7 +579,6 @@ export class MultiplexerSessionManager {
         directory: known.directory,
         ownerInstanceId: this.instanceId,
         createdAt: now,
-        lastSeenAt: now,
       });
 
       log('[multiplexer-session-manager] pane respawned on busy', {
