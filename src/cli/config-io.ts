@@ -692,7 +692,9 @@ export function detectCurrentConfig(): DetectedConfig {
       result.hasOpenAI ||= models.some((m) => m.startsWith('openai/'));
       result.hasAnthropic ||= models.some((m) => m.startsWith('anthropic/'));
       result.hasCopilot ||= models.some((m) => m.startsWith('github-copilot/'));
-      result.hasZaiPlan ||= models.some((m) => m.startsWith('zai-coding-plan/'));
+      result.hasZaiPlan ||= models.some((m) =>
+        m.startsWith('zai-coding-plan/'),
+      );
       result.hasOpencodeZen ||= models.some((m) => m.startsWith('opencode/'));
       if (models.some((m) => m.startsWith('google/'))) {
         result.hasAntigravity = true;

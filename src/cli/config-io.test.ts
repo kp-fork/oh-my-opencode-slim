@@ -585,7 +585,10 @@ describe('config-io', () => {
     const litePath = join(tmpDir, 'opencode', 'oh-my-opencode-slim.json');
     paths.ensureConfigDir();
 
-    writeFileSync(configPath, JSON.stringify({ plugin: ['oh-my-opencode-slim'] }));
+    writeFileSync(
+      configPath,
+      JSON.stringify({ plugin: ['oh-my-opencode-slim'] }),
+    );
     writeFileSync(
       litePath,
       JSON.stringify({
@@ -593,7 +596,10 @@ describe('config-io', () => {
         presets: {
           dev: {
             orchestrator: {
-              model: ['openai/gpt-5.4-mini', { id: 'anthropic/claude-opus-4-6' }],
+              model: [
+                'openai/gpt-5.4-mini',
+                { id: 'anthropic/claude-opus-4-6' },
+              ],
             },
           },
         },
