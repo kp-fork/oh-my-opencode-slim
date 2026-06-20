@@ -577,6 +577,38 @@ describe('CouncilManager', () => {
       expect(councillorCall).toBeDefined();
     });
 
+    test('disables mutating and delegation tools in councillor prompt body', async () => {
+      const ctx = createMockContext({
+        sessionMessagesResult: {
+          data: [
+            {
+              info: { role: 'assistant' },
+              parts: [{ type: 'text', text: 'Response' }],
+            },
+          ],
+        },
+      });
+      const config = createTestCouncilConfig();
+      const manager = new CouncilManager(ctx, config, undefined);
+
+      await manager.runCouncil('test prompt', undefined, 'parent-id');
+
+      const promptCalls = ctx.client.session.prompt.mock.calls as Array<
+        [{ body?: { agent?: string; tools?: Record<string, boolean> } }]
+      >;
+      const councillorCall = promptCalls.find(
+        (c) => c[0].body?.agent === 'councillor',
+      );
+      expect(councillorCall?.[0].body?.tools).toEqual({
+        task: false,
+        edit: false,
+        write: false,
+        apply_patch: false,
+        ast_grep_replace: false,
+        bash: false,
+      });
+    });
+
     test('creates session with model label in title', async () => {
       const ctx = createMockContext({
         sessionMessagesResult: {

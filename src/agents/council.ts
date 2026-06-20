@@ -1,6 +1,7 @@
 import { READONLY_FILE_OPERATIONS_RULES } from '../config';
 import { shortModelLabel } from '../utils/session';
 import { type AgentDefinition, resolvePrompt } from './orchestrator';
+import { createReadOnlyAgentPermission } from './permissions';
 
 // NOTE: Councillor system prompts live in the councillor agent factory.
 // The format functions below only structure the USER message content — the
@@ -9,7 +10,7 @@ import { type AgentDefinition, resolvePrompt } from './orchestrator';
 const COUNCIL_AGENT_PROMPT = `You are the Council agent — a multi-LLM \
 orchestration system that runs consensus across multiple models.
 
-**Tool**: You have access to the \`council_session\` tool.
+**Tool**: You have access to the \`council_session\` tool. You also have read-only codebase inspection tools. You do not have write, edit, shell, or subagent-delegation tools.
 
 **When to use**:
 - When invoked by a user with a request
@@ -87,6 +88,10 @@ export function createCouncilAgent(
     config: {
       temperature: 0.1,
       prompt,
+      permission: {
+        ...createReadOnlyAgentPermission(),
+        council_session: 'allow',
+      },
     },
   };
 

@@ -312,14 +312,43 @@ describe('tool permissions', () => {
     expect((councillor?.config.permission as any).council_session).toBe('deny');
   });
 
-  test('subagents are denied access to cancel_task', () => {
+  test('council agent is read-only except council_session', () => {
     const agents = createAgents({
       council: councilConfig(),
     });
-    for (const name of ['oracle', 'explorer', 'fixer', 'council']) {
-      const agent = agents.find((a) => a.name === name);
-      expect((agent?.config.permission as any).cancel_task).toBe('deny');
-    }
+    const council = agents.find((a) => a.name === 'council');
+    const permission = council?.config.permission as Record<string, string>;
+    expect(permission['*']).toBe('deny');
+    expect(permission.read).toBe('allow');
+    expect(permission.glob).toBe('allow');
+    expect(permission.grep).toBe('allow');
+    expect(permission.ast_grep_search).toBe('allow');
+    expect(permission.council_session).toBe('allow');
+    expect(permission.bash).toBe('deny');
+    expect(permission.edit).toBe('deny');
+    expect(permission.write).toBe('deny');
+    expect(permission.apply_patch).toBe('deny');
+    expect(permission.ast_grep_replace).toBe('deny');
+    expect(permission.task).toBe('deny');
+  });
+
+  test('councillor remains read-only after default permissions are applied', () => {
+    const agents = createAgents({
+      council: councilConfig(),
+    });
+    const councillor = agents.find((a) => a.name === 'councillor');
+    const permission = councillor?.config.permission as Record<string, string>;
+    expect(permission['*']).toBe('deny');
+    expect(permission.read).toBe('allow');
+    expect(permission.glob).toBe('allow');
+    expect(permission.grep).toBe('allow');
+    expect(permission.council_session).toBe('deny');
+    expect(permission.bash).toBe('deny');
+    expect(permission.edit).toBe('deny');
+    expect(permission.write).toBe('deny');
+    expect(permission.apply_patch).toBe('deny');
+    expect(permission.ast_grep_replace).toBe('deny');
+    expect(permission.task).toBe('deny');
   });
 });
 

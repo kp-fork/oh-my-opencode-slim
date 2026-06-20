@@ -94,9 +94,20 @@ describe('councillor permissions', () => {
     expect(permission.ast_grep_search).toBe('allow');
   });
 
-  test('has exactly 9 permission entries', () => {
+  test('denies mutating and delegation tools explicitly', () => {
     const agent = createCouncillorAgent('test-model');
     const permission = agent.config.permission as Record<string, string>;
-    expect(Object.keys(permission)).toHaveLength(9);
+    expect(permission.bash).toBe('deny');
+    expect(permission.edit).toBe('deny');
+    expect(permission.write).toBe('deny');
+    expect(permission.apply_patch).toBe('deny');
+    expect(permission.ast_grep_replace).toBe('deny');
+    expect(permission.task).toBe('deny');
+  });
+
+  test('has exactly 15 permission entries', () => {
+    const agent = createCouncillorAgent('test-model');
+    const permission = agent.config.permission as Record<string, string>;
+    expect(Object.keys(permission)).toHaveLength(15);
   });
 });
