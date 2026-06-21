@@ -24,21 +24,20 @@ export type AgentName = (typeof ALL_AGENT_NAMES)[number];
 export const PROTECTED_AGENTS = new Set(['orchestrator', 'councillor']);
 
 /**
- * Get the list of orchestratable agents, excluding any disabled agents.
- * This is used for delegation validation at runtime.
+ * Default models for each agent.
+ * All set to undefined so agents follow the global/session model.
+ * Users can override per-agent via oh-my-opencode-slim.json agents.<name>.model.
  */
-// Default models for each agent
-// orchestrator is undefined so its model is fully resolved at runtime via priority fallback
 export const DEFAULT_MODELS: Record<AgentName, string | undefined> = {
   orchestrator: undefined,
-  oracle: 'openai/gpt-5.5',
-  librarian: 'openai/gpt-5.4-mini',
-  explorer: 'openai/gpt-5.4-mini',
-  designer: 'openai/gpt-5.4-mini',
-  fixer: 'openai/gpt-5.4-mini',
-  observer: 'openai/gpt-5.4-mini',
-  council: 'openai/gpt-5.4-mini',
-  councillor: 'openai/gpt-5.4-mini',
+  oracle: undefined,
+  librarian: undefined,
+  explorer: undefined,
+  designer: undefined,
+  fixer: undefined,
+  observer: undefined,
+  council: undefined,
+  councillor: undefined,
 };
 
 // Polling configuration
