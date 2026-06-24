@@ -12,6 +12,7 @@ import {
 } from '../../utils';
 import { isRecord as isObjectRecord } from '../../utils/guards';
 import { log } from '../../utils/logger';
+import { isRateLimitError } from '../foreground-fallback/index';
 import type { MessagePart, MessageWithParts } from '../types';
 
 interface TaskArgs {
@@ -745,7 +746,17 @@ export function createTaskSessionManagerHook(
         const sessionId =
           input.event.properties?.info?.id ?? input.event.properties?.sessionID;
         if (sessionId && options.shouldManageSession(sessionId)) {
-          terminalJobsInjectedByParent.delete(sessionId);
+          // Only clear injected terminal jobs for fatal errors.
+          // Rate-limit errors are recovered by ForegroundFallbackManager
+          // (abort + reprompt with fallback model); clearing the injected
+          // job state here would make the orchestrator lose track of
+          // completed background tasks and unable to dispatch follow-ups.
+          const props = input.event.properties as
+            | { error?: unknown }
+            | undefined;
+          if (!props?.error || !isRateLimitError(props.error)) {
+            terminalJobsInjectedByParent.delete(sessionId);
+          }
         }
 
         return;

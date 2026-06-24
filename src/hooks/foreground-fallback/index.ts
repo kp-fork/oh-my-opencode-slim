@@ -15,6 +15,7 @@
  */
 
 import type { PluginInput } from '@opencode-ai/plugin';
+import { ALL_AGENT_NAMES } from '../../config/constants';
 import { log } from '../../utils/logger';
 import {
   abortSessionWithTimeout,
@@ -236,17 +237,37 @@ export class ForegroundFallbackManager {
         this.sessionTried.set(sessionID, new Set());
       }
       // biome-ignore lint/style/noNonNullAssertion: We just set this above
-      const tried = this.sessionTried.get(sessionID)!;
+      let tried = this.sessionTried.get(sessionID)!;
       if (currentModel) tried.add(currentModel);
 
-      const nextModel = chain.find((m) => !tried.has(m));
+      let nextModel = chain.find((m) => !tried.has(m));
       if (!nextModel) {
-        log('[foreground-fallback] fallback chain exhausted', {
-          sessionID,
-          agentName,
-          tried: [...tried],
-        });
-        return;
+        if (chain.length > 1) {
+          // Chain exhausted but we have fallbacks: reset tried set and
+          // stick to the deepest fallback model so we stop re-trying the
+          // dead primary model on every subsequent message.
+          const primary = chain[0];
+          const stickyFallback = chain[chain.length - 1];
+          log('[foreground-fallback] resetting tried set for re-fallback', {
+            sessionID,
+            agentName,
+            currentModel,
+            prevTried: [...tried],
+            nextModel: stickyFallback,
+          });
+          tried = new Set();
+          if (primary) tried.add(primary);
+          if (currentModel && currentModel !== primary) tried.add(currentModel);
+          this.sessionTried.set(sessionID, tried);
+          nextModel = stickyFallback;
+        } else {
+          log('[foreground-fallback] fallback chain exhausted', {
+            sessionID,
+            agentName,
+            tried: [...tried],
+          });
+          return;
+        }
       }
       tried.add(nextModel);
 
@@ -352,9 +373,18 @@ export class ForegroundFallbackManager {
     currentModel: string | undefined,
   ): string[] {
     if (agentName) {
-      // Agent is known: use its chain exactly, or no chain at all.
-      // Never fall through to cross-agent chains when the agent is identified.
-      return this.chains[agentName] ?? [];
+      // Agent is known: use its chain exactly if configured.
+      const chain = this.chains[agentName];
+      if (chain) return chain;
+      // Known omos built-in agent (oracle, librarian, …) without a
+      // configured chain: keep isolation — do NOT bleed into other
+      // agents' chains (preserves the cross-agent isolation contract
+      // from PR #199).
+      if ((ALL_AGENT_NAMES as readonly string[]).includes(agentName)) return [];
+      // Unknown agent (e.g. OpenCode built-in "compaction" or "title"
+      // that don't appear in the user preset): fall through to
+      // model-matching so they can inherit a chain from a configured
+      // agent that shares their model.
     }
 
     // Agent unknown: try to infer from the current model.

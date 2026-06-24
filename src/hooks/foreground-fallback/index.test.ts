@@ -698,4 +698,39 @@ describe('ForegroundFallbackManager resolveChain cross-agent isolation', () => {
     expect(call[0].body.model.providerID).toBe('openai');
     expect(call[0].body.model.modelID).toBe('gpt-4o');
   });
+
+  test('falls through to model matching for non-omos agents (e.g. compaction)', async () => {
+    // compaction is an OpenCode built-in agent that is NOT an omos agent,
+    // so it has no chain configured. It should fall through to model
+    // matching and inherit a chain from a configured agent that shares
+    // its model, instead of being silently excluded from fallback.
+    const { client, mocks } = createMockClient();
+    const mgr = new ForegroundFallbackManager(
+      client,
+      { orchestrator: ['openai/gpt-5.4', 'new-api/glm-5.2'] },
+      true,
+    );
+
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'compaction-sess',
+          agent: 'compaction', // NOT a known omos built-in agent
+          providerID: 'openai',
+          modelID: 'gpt-5.4',
+          error: { message: 'rate limit exceeded' },
+        },
+      },
+    });
+
+    // compaction's model (openai/gpt-5.4) matches orchestrator's chain
+    // → should fall back to the next untried model in that chain
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const call = mocks.promptAsync.mock.calls[0] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(call[0].body.model.providerID).toBe('new-api');
+    expect(call[0].body.model.modelID).toBe('glm-5.2');
+  });
 });
