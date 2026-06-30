@@ -25,6 +25,7 @@ import {
   createDelegateTaskRetryHook,
   createFilterAvailableSkillsHook,
   createJsonErrorRecoveryHook,
+  createLoopCommandHook,
   createPhaseReminderHook,
   createPostFileToolNudgeHook,
   createReflectCommandHook,
@@ -148,6 +149,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let foregroundFallback: ForegroundFallbackManager;
   let deepworkCommandHook: ReturnType<typeof createDeepworkCommandHook>;
   let reflectCommandHook: ReturnType<typeof createReflectCommandHook>;
+  let loopCommandHook: ReturnType<typeof createLoopCommandHook>;
   let taskSessionManagerHook: ReturnType<typeof createTaskSessionManagerHook>;
   let backgroundJobBoard: BackgroundJobBoard;
   let interviewManager: ReturnType<typeof createInterviewManager>;
@@ -261,7 +263,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       multiplexerConfig,
       backgroundJobBoard,
     );
-    backgroundJobBoard.setTerminalStateListener((taskID) => {
+    backgroundJobBoard.addTerminalStateListener((taskID) => {
       void multiplexerSessionManager.retryDeferredIdleClose(taskID);
     });
 
@@ -305,6 +307,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     deepworkCommandHook = createDeepworkCommandHook();
     reflectCommandHook = createReflectCommandHook();
+    loopCommandHook = createLoopCommandHook();
     taskSessionManagerHook = createTaskSessionManagerHook(ctx, {
       maxSessionsPerAgent: config.backgroundJobs?.maxSessionsPerAgent ?? 2,
       readContextMinLines: config.backgroundJobs?.readContextMinLines ?? 10,
@@ -740,6 +743,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       interviewManager.registerCommand(opencodeConfig);
       deepworkCommandHook.registerCommand(opencodeConfig);
       reflectCommandHook.registerCommand(opencodeConfig);
+      loopCommandHook.registerCommand(opencodeConfig);
       presetManager.registerCommand(opencodeConfig);
     },
 
@@ -936,6 +940,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       );
 
       await reflectCommandHook.handleCommandExecuteBefore(
+        input as {
+          command: string;
+          sessionID: string;
+          arguments: string;
+        },
+        output as { parts: Array<{ type: string; text?: string }> },
+      );
+
+      await loopCommandHook.handleCommandExecuteBefore(
         input as {
           command: string;
           sessionID: string;
