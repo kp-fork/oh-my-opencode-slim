@@ -14,7 +14,7 @@ export interface PendingCallTracker {
   firstForParent(parentSessionId: string): string | undefined;
   prune(maxSize: number): void;
   clearForSession(sessionId: string): void;
-  pendingCallId(sessionID?: string): string;
+  pendingCallId(sessionID?: string, callID?: string): string;
 }
 
 export function createPendingCallTracker(): PendingCallTracker {
@@ -72,8 +72,11 @@ export function createPendingCallTracker(): PendingCallTracker {
       }
     },
 
-    pendingCallId(sessionID?: string) {
-      return `${sessionID ?? 'unknown'}:anonymous-${++anonymousPendingCallId}`;
+    pendingCallId(sessionID?: string, callID?: string) {
+      return (
+        callID ??
+        `${sessionID ?? 'unknown'}:anonymous-${++anonymousPendingCallId}`
+      );
     },
   };
 }

@@ -1,9 +1,7 @@
-import path from 'node:path';
 import type { PluginInput } from '@opencode-ai/plugin';
 import {
   BackgroundJobBoard,
   type BackgroundJobRecord,
-  type ContextFile,
   deriveTaskSessionLabel,
   parseTaskIdFromTaskOutput,
   parseTaskLaunchOutput,
@@ -13,28 +11,20 @@ import {
 import { isRecord as isObjectRecord } from '../../utils/guards';
 import { log } from '../../utils/logger';
 import type { MessagePart, MessageWithParts } from '../types';
+import {
+  createPendingCallTracker,
+  type PendingTaskCall,
+} from './pending-call-tracker';
+import {
+  createTaskContextTracker,
+  extractReadFiles,
+} from './task-context-tracker';
 
 interface TaskArgs {
   description?: unknown;
   prompt?: unknown;
   subagent_type?: unknown;
   task_id?: unknown;
-}
-
-interface PendingTaskCall {
-  callId: string;
-  parentSessionId: string;
-  agentType: string;
-  label: string;
-  resumedTaskId?: string;
-}
-
-const MAX_PENDING_TASK_CALLS = 100;
-
-interface PendingContextFile {
-  path: string;
-  lines: Set<number>;
-  lastReadAt: number;
 }
 
 const BACKGROUND_JOB_BOARD_SENTINEL = 'SENTINEL: background-job-board-v2';
@@ -95,48 +85,9 @@ function createOccurrenceId(
   return `anon:${hash}`;
 }
 
-function extractPath(output: string): string | undefined {
-  return /<path>([^<]+)<\/path>/.exec(output)?.[1];
-}
-
 function extractTaskSummary(output: string): string | undefined {
   const summary = /<summary>\s*([\s\S]*?)\s*<\/summary>/i.exec(output)?.[1];
   return summary?.trim() || undefined;
-}
-
-function normalizePath(root: string, file: string): string {
-  const relative = path.relative(root, file);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    return file;
-  }
-  return relative;
-}
-
-function extractReadFiles(
-  root: string,
-  output: { output: unknown; metadata?: unknown },
-): ContextFile[] {
-  if (typeof output.output !== 'string') return [];
-
-  const file = extractPath(output.output);
-  if (!file) return [];
-
-  return [
-    {
-      path: normalizePath(root, file),
-      lineCount: countReadLines(output.output).length,
-      lineNumbers: countReadLines(output.output),
-      lastReadAt: Date.now(),
-    },
-  ];
-}
-
-function countReadLines(output: string): number[] {
-  const lines = new Set<number>();
-  for (const match of output.matchAll(/^([0-9]+):/gm)) {
-    lines.add(Number(match[1]));
-  }
-  return [...lines];
 }
 
 export function createTaskSessionManagerHook(
@@ -156,65 +107,15 @@ export function createTaskSessionManagerHook(
       readContextMinLines: options.readContextMinLines,
       readContextMaxFiles: options.readContextMaxFiles,
     });
-  const pendingCalls = new Map<string, PendingTaskCall>();
-  const pendingCallOrder: string[] = [];
-  const contextByTask = new Map<string, Map<string, PendingContextFile>>();
-  const pendingManagedTaskIds = new Set<string>();
-  const terminalJobsInjectedByParent = new Map<string, Set<string>>();
+
+  // Tracker instances — created once, shared across all event handlers
+  const pendingCallTracker = createPendingCallTracker();
+  const taskContextTracker = createTaskContextTracker();
+
+  // Dedup state — stays in wiring layer (colocated with its consumers)
   const processedInjectedCompletions = new Set<string>();
   const processedInjectedCompletionOrder: string[] = [];
-  let anonymousPendingCallId = 0;
-
-  function addTaskContext(taskId: string, files: ContextFile[]): void {
-    if (files.length === 0) return;
-
-    let context = contextByTask.get(taskId);
-    if (!context) {
-      context = new Map();
-      contextByTask.set(taskId, context);
-    }
-    for (const file of files) {
-      const pending = context.get(file.path) ?? {
-        path: file.path,
-        lines: new Set<number>(),
-        lastReadAt: file.lastReadAt,
-      };
-      for (const line of file.lineNumbers ?? []) {
-        pending.lines.add(line);
-      }
-      pending.lastReadAt = Math.max(pending.lastReadAt, file.lastReadAt);
-      context.set(file.path, pending);
-    }
-
-    backgroundJobBoard.addContext(taskId, contextFilesForPrompt(context));
-  }
-
-  function contextFilesForPrompt(
-    context: Map<string, PendingContextFile> | undefined,
-  ): ContextFile[] {
-    if (!context) return [];
-    return [...context.values()].map((file) => ({
-      path: file.path,
-      lineCount: file.lines.size,
-      lastReadAt: file.lastReadAt,
-    }));
-  }
-
-  function canTrackTaskContext(taskId: string): boolean {
-    return (
-      pendingManagedTaskIds.has(taskId) ||
-      backgroundJobBoard.taskIDs().has(taskId)
-    );
-  }
-
-  function pruneContext(): void {
-    const remembered = backgroundJobBoard.taskIDs();
-    for (const taskId of contextByTask.keys()) {
-      if (!pendingManagedTaskIds.has(taskId) && !remembered.has(taskId)) {
-        contextByTask.delete(taskId);
-      }
-    }
-  }
+  const terminalJobsInjectedByParent = new Map<string, Set<string>>();
 
   function updateBackgroundJobFromOutput(
     output: unknown,
@@ -268,12 +169,12 @@ export function createTaskSessionManagerHook(
     });
 
     if (backgroundJobBoard.isTerminalUnreconciled(updated.taskID)) {
-      pendingManagedTaskIds.delete(updated.taskID);
+      taskContextTracker.removeManagedTaskId(updated.taskID);
       backgroundJobBoard.addContext(
         updated.taskID,
-        contextFilesForPrompt(contextByTask.get(updated.taskID)),
+        taskContextTracker.contextFilesForPrompt(updated.taskID),
       );
-      pruneContext();
+      taskContextTracker.prune(backgroundJobBoard);
     }
 
     return updated;
@@ -374,61 +275,6 @@ export function createTaskSessionManagerHook(
     );
   }
 
-  function pendingCallId(input: {
-    callID?: string;
-    sessionID?: string;
-  }): string {
-    return (
-      input.callID ??
-      `${input.sessionID ?? 'unknown'}:anonymous-${++anonymousPendingCallId}`
-    );
-  }
-
-  function rememberPendingCall(call: PendingTaskCall): void {
-    const existingIndex = pendingCallOrder.indexOf(call.callId);
-    if (existingIndex >= 0) {
-      pendingCallOrder.splice(existingIndex, 1);
-    }
-
-    pendingCalls.set(call.callId, call);
-    pendingCallOrder.push(call.callId);
-
-    while (pendingCallOrder.length > MAX_PENDING_TASK_CALLS) {
-      const evictedCallId = pendingCallOrder.shift();
-      if (!evictedCallId) {
-        break;
-      }
-      pendingCalls.delete(evictedCallId);
-    }
-  }
-
-  function takePendingCall(
-    callId?: string,
-    parentSessionId?: string,
-  ): PendingTaskCall | undefined {
-    const resolvedCallId = callId ?? firstPendingCallForParent(parentSessionId);
-    if (!resolvedCallId) return undefined;
-
-    const pending = pendingCalls.get(resolvedCallId);
-    pendingCalls.delete(resolvedCallId);
-
-    const orderIndex = pendingCallOrder.indexOf(resolvedCallId);
-    if (orderIndex >= 0) {
-      pendingCallOrder.splice(orderIndex, 1);
-    }
-
-    return pending;
-  }
-
-  function firstPendingCallForParent(
-    parentSessionId?: string,
-  ): string | undefined {
-    if (!parentSessionId) return undefined;
-    return pendingCallOrder.find(
-      (callId) => pendingCalls.get(callId)?.parentSessionId === parentSessionId,
-    );
-  }
-
   function rememberInjectedTerminalJobs(parentSessionID: string): void {
     const taskIDs = backgroundJobBoard
       .list(parentSessionID)
@@ -497,15 +343,12 @@ export function createTaskSessionManagerHook(
       });
 
       const pendingCall: PendingTaskCall = {
-        callId: pendingCallId({
-          callID: input.callID,
-          sessionID: input.sessionID,
-        }),
+        callId: pendingCallTracker.pendingCallId(input.sessionID, input.callID),
         parentSessionId: input.sessionID,
         agentType,
         label,
       };
-      rememberPendingCall(pendingCall);
+      pendingCallTracker.add(pendingCall);
 
       if (typeof args.task_id !== 'string' || args.task_id.trim() === '') {
         return;
@@ -521,7 +364,7 @@ export function createTaskSessionManagerHook(
       if (!remembered) {
         if (RAW_SESSION_ID_PATTERN.test(requested)) {
           pendingCall.resumedTaskId = requested;
-          rememberPendingCall(pendingCall);
+          pendingCallTracker.add(pendingCall);
           return;
         }
         delete args.task_id;
@@ -529,10 +372,10 @@ export function createTaskSessionManagerHook(
       }
 
       args.task_id = remembered.taskID;
-      pendingManagedTaskIds.add(remembered.taskID);
+      taskContextTracker.addManagedTaskId(remembered.taskID);
       backgroundJobBoard.markUsed(input.sessionID, remembered.taskID);
       pendingCall.resumedTaskId = remembered.taskID;
-      rememberPendingCall(pendingCall);
+      pendingCallTracker.add(pendingCall);
     },
 
     'tool.execute.after': async (
@@ -540,8 +383,11 @@ export function createTaskSessionManagerHook(
       output: { output: unknown; metadata?: unknown },
     ): Promise<void> => {
       if (input.tool.toLowerCase() === 'read') {
-        if (input.sessionID && canTrackTaskContext(input.sessionID)) {
-          addTaskContext(
+        if (
+          input.sessionID &&
+          taskContextTracker.canTrack(input.sessionID, backgroundJobBoard)
+        ) {
+          taskContextTracker.addContext(
             input.sessionID,
             extractReadFiles(_ctx.directory, output),
           );
@@ -551,7 +397,7 @@ export function createTaskSessionManagerHook(
 
       if (input.tool.toLowerCase() !== 'task') return;
 
-      const pending = takePendingCall(input.callID, input.sessionID);
+      const pending = pendingCallTracker.take(input.callID, input.sessionID);
 
       if (!pending || typeof output.output !== 'string') return;
       const launch = parseTaskLaunchOutput(output.output);
@@ -571,11 +417,11 @@ export function createTaskSessionManagerHook(
           description: record.description,
           state: record.state,
         });
+        taskContextTracker.addManagedTaskId(launch.taskID);
         backgroundJobBoard.addContext(
           launch.taskID,
-          contextFilesForPrompt(contextByTask.get(launch.taskID)),
+          taskContextTracker.contextFilesForPrompt(launch.taskID),
         );
-        pendingManagedTaskIds.add(launch.taskID);
         return;
       }
 
@@ -608,12 +454,12 @@ export function createTaskSessionManagerHook(
         if (pending.resumedTaskId && pending.resumedTaskId !== status.taskID) {
           backgroundJobBoard.drop(pending.resumedTaskId);
         }
-        pendingManagedTaskIds.delete(status.taskID);
-        const contextFiles = contextFilesForPrompt(
-          contextByTask.get(status.taskID),
+        taskContextTracker.removeManagedTaskId(status.taskID);
+        backgroundJobBoard.addContext(
+          status.taskID,
+          taskContextTracker.contextFilesForPrompt(status.taskID),
         );
-        backgroundJobBoard.addContext(status.taskID, contextFiles);
-        pruneContext();
+        taskContextTracker.prune(backgroundJobBoard);
         return;
       }
 
@@ -632,10 +478,12 @@ export function createTaskSessionManagerHook(
         backgroundJobBoard.drop(pending.resumedTaskId);
       }
 
-      pendingManagedTaskIds.delete(taskId);
-      const contextFiles = contextFilesForPrompt(contextByTask.get(taskId));
-      backgroundJobBoard.addContext(taskId, contextFiles);
-      pruneContext();
+      taskContextTracker.removeManagedTaskId(taskId);
+      backgroundJobBoard.addContext(
+        taskId,
+        taskContextTracker.contextFilesForPrompt(taskId),
+      );
+      taskContextTracker.prune(backgroundJobBoard);
     },
 
     'experimental.chat.messages.transform': async (
@@ -715,7 +563,7 @@ export function createTaskSessionManagerHook(
           info.parentID &&
           options.shouldManageSession(info.parentID)
         ) {
-          pendingManagedTaskIds.add(info.id);
+          taskContextTracker.addManagedTaskId(info.id);
         }
         return;
       }
@@ -818,16 +666,9 @@ export function createTaskSessionManagerHook(
       backgroundJobBoard.drop(sessionId);
       backgroundJobBoard.clearParent(sessionId);
       terminalJobsInjectedByParent.delete(sessionId);
-      contextByTask.delete(sessionId);
-      pendingManagedTaskIds.delete(sessionId);
-      pruneContext();
-
-      for (const [callId, pending] of pendingCalls.entries()) {
-        if (pending.parentSessionId !== sessionId) {
-          continue;
-        }
-        takePendingCall(callId);
-      }
+      taskContextTracker.clearSession(sessionId);
+      taskContextTracker.prune(backgroundJobBoard);
+      pendingCallTracker.clearForSession(sessionId);
     },
   };
 
