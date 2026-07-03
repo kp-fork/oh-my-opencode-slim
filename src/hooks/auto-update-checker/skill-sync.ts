@@ -1,16 +1,21 @@
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs';
 import {
   copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
+  readlinkSync,
   renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { CUSTOM_SKILLS } from '../../cli/custom-skills';
+import { CUSTOM_SKILLS } from '../../cli/custom-skills-registry';
 import { getConfigDir } from '../../cli/paths';
 import { log } from '../../utils/logger';
 
@@ -185,10 +190,10 @@ export function computeDirectoryHash(dirPath: string): string {
     hash.update(String(entry.mode & 0o7777));
     hash.update('\0');
     if (entry.kind === 'file') {
-      const content = fs.readFileSync(entry.absolutePath);
+      const content = readFileSync(entry.absolutePath);
       hash.update(content);
     } else if (entry.kind === 'symlink') {
-      hash.update(fs.readlinkSync(entry.absolutePath));
+      hash.update(readlinkSync(entry.absolutePath));
     }
   }
 
@@ -227,7 +232,7 @@ export function acquireLock(lockDir: string): boolean {
         time: Date.now(),
         token: PROCESS_TOKEN,
       };
-      fs.writeFileSync(metadataPath, JSON.stringify(metadata), 'utf-8');
+      writeFileSync(metadataPath, JSON.stringify(metadata), 'utf-8');
     } catch {
       // Ignored
     }
@@ -250,7 +255,7 @@ export function acquireLock(lockDir: string): boolean {
 
     if (existsSync(metadataPath)) {
       try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
+        const content = readFileSync(metadataPath, 'utf-8');
         const metadata = JSON.parse(content);
         ageMs = Date.now() - metadata.time;
 
@@ -277,7 +282,7 @@ export function acquireLock(lockDir: string): boolean {
         shouldSteal = true;
       }
     } else {
-      const stat = fs.statSync(lockDir);
+      const stat = statSync(lockDir);
       ageMs = Date.now() - stat.mtimeMs;
       if (ageMs > 30000) {
         shouldSteal = true;
@@ -287,7 +292,7 @@ export function acquireLock(lockDir: string): boolean {
     if (!shouldSteal) return false;
 
     log(`[skill-sync] Stealing/recovering lock directory.`);
-    fs.rmSync(lockDir, { recursive: true, force: true });
+    rmSync(lockDir, { recursive: true, force: true });
     mkdirSync(lockDir);
     writeMetadata();
     ACQUIRED_LOCKS.add(path.resolve(lockDir));
@@ -309,7 +314,7 @@ export function releaseLock(lockDir: string): void {
 
     if (existsSync(metadataPath)) {
       try {
-        const content = fs.readFileSync(metadataPath, 'utf-8');
+        const content = readFileSync(metadataPath, 'utf-8');
         const metadata = JSON.parse(content);
         if (
           metadata.host === os.hostname() &&
@@ -330,7 +335,7 @@ export function releaseLock(lockDir: string): void {
 
     if (isOurLock) {
       if (existsSync(lockDir)) {
-        fs.rmSync(lockDir, { recursive: true, force: true });
+        rmSync(lockDir, { recursive: true, force: true });
       }
     } else if (existsSync(lockDir)) {
       log(
@@ -377,7 +382,7 @@ function atomicReplaceDir(sourceDir: string, destDir: string): void {
     renameSync(stagingDir, destDir);
 
     if (backupCreated) {
-      fs.rmSync(backupDir, { recursive: true, force: true });
+      rmSync(backupDir, { recursive: true, force: true });
     }
   } catch (err) {
     log(
@@ -388,7 +393,7 @@ function atomicReplaceDir(sourceDir: string, destDir: string): void {
     if (backupCreated) {
       try {
         if (existsSync(destDir)) {
-          fs.rmSync(destDir, { recursive: true, force: true });
+          rmSync(destDir, { recursive: true, force: true });
         }
         renameSync(backupDir, destDir);
       } catch (rollbackErr) {
@@ -401,7 +406,7 @@ function atomicReplaceDir(sourceDir: string, destDir: string): void {
 
     try {
       if (existsSync(stagingDir)) {
-        fs.rmSync(stagingDir, { recursive: true, force: true });
+        rmSync(stagingDir, { recursive: true, force: true });
       }
     } catch {}
 
@@ -480,7 +485,7 @@ function recoverOrphanArtifacts(
 
     for (const backup of backups) {
       try {
-        fs.rmSync(backup, { recursive: true, force: true });
+        rmSync(backup, { recursive: true, force: true });
       } catch (err) {
         log(`[skill-sync] Failed to clean up backup folder ${backup}:`, err);
       }
@@ -489,7 +494,7 @@ function recoverOrphanArtifacts(
 
   for (const staging of stagings) {
     try {
-      fs.rmSync(staging, { recursive: true, force: true });
+      rmSync(staging, { recursive: true, force: true });
     } catch (err) {
       log(`[skill-sync] Failed to clean up staging folder ${staging}:`, err);
     }
@@ -518,7 +523,7 @@ function removeManagedStagedPath(
 
     if (isUnderRoot) {
       if (existsSync(absoluteStagedPath)) {
-        fs.rmSync(absoluteStagedPath, { recursive: true, force: true });
+        rmSync(absoluteStagedPath, { recursive: true, force: true });
         log(
           `[skill-sync] Safely cleaned up staged path for ${skillName}: ${absoluteStagedPath}`,
         );
@@ -588,7 +593,7 @@ export function syncBundledSkillsFromPackage(
   try {
     const pkgJsonPath = path.join(packageRoot, 'package.json');
     if (existsSync(pkgJsonPath)) {
-      const content = fs.readFileSync(pkgJsonPath, 'utf-8');
+      const content = readFileSync(pkgJsonPath, 'utf-8');
       const pkg = JSON.parse(content);
       if (pkg.version) {
         packageVersion = pkg.version;
@@ -639,7 +644,7 @@ export function syncBundledSkillsFromPackage(
 
     if (existsSync(manifestPath)) {
       try {
-        const content = fs.readFileSync(manifestPath, 'utf-8');
+        const content = readFileSync(manifestPath, 'utf-8');
         const parsed = JSON.parse(content);
         if (validateManifest(parsed)) {
           manifest = parsed;
@@ -768,7 +773,7 @@ export function syncBundledSkillsFromPackage(
                   skill.name,
                 );
                 if (existsSync(stagedSkillDir)) {
-                  fs.rmSync(stagedSkillDir, { recursive: true, force: true });
+                  rmSync(stagedSkillDir, { recursive: true, force: true });
                 }
                 mkdirSync(stagedSkillDir, { recursive: true });
                 copyDirRecursive(sourcePath, stagedSkillDir);
@@ -941,7 +946,7 @@ export function syncBundledSkillsFromPackage(
                     );
                   }
                   if (existsSync(stagedSkillDir)) {
-                    fs.rmSync(stagedSkillDir, { recursive: true, force: true });
+                    rmSync(stagedSkillDir, { recursive: true, force: true });
                   }
                   mkdirSync(stagedSkillDir, { recursive: true });
                   copyDirRecursive(sourcePath, stagedSkillDir);
@@ -1009,7 +1014,7 @@ export function syncBundledSkillsFromPackage(
                     );
                   }
                   if (existsSync(stagedSkillDir)) {
-                    fs.rmSync(stagedSkillDir, { recursive: true, force: true });
+                    rmSync(stagedSkillDir, { recursive: true, force: true });
                   }
                   mkdirSync(stagedSkillDir, { recursive: true });
                   copyDirRecursive(sourcePath, stagedSkillDir);
@@ -1104,7 +1109,7 @@ export function syncBundledSkillsFromPackage(
                 skill.name,
               );
               if (existsSync(stagedSkillDir)) {
-                fs.rmSync(stagedSkillDir, { recursive: true, force: true });
+                rmSync(stagedSkillDir, { recursive: true, force: true });
               }
               mkdirSync(stagedSkillDir, { recursive: true });
               copyDirRecursive(sourcePath, stagedSkillDir);
@@ -1143,18 +1148,18 @@ export function syncBundledSkillsFromPackage(
     manifest.updatedAt = new Date().toISOString();
     const tempManifestPath = `${manifestPath}.${Math.random().toString(36).slice(2, 9)}.tmp`;
     try {
-      fs.writeFileSync(
+      writeFileSync(
         tempManifestPath,
         JSON.stringify(manifest, null, 2),
         'utf-8',
       );
-      fs.renameSync(tempManifestPath, manifestPath);
+      renameSync(tempManifestPath, manifestPath);
     } catch (err) {
       log('[skill-sync] Failed to write skills manifest atomically:', err);
       manifestWriteFailed = true;
       try {
-        if (fs.existsSync(tempManifestPath)) {
-          fs.unlinkSync(tempManifestPath);
+        if (existsSync(tempManifestPath)) {
+          unlinkSync(tempManifestPath);
         }
       } catch {}
     }
