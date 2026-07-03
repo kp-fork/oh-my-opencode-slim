@@ -89,6 +89,10 @@ describe('isRateLimitError', () => {
     expect(isRateLimitError({ message: 'Insufficient balance.' })).toBe(true);
   });
 
+  test('returns true for "Service Unavailable"', () => {
+    expect(isRateLimitError({ message: 'Service Unavailable' })).toBe(true);
+  });
+
   test('returns true for "Monthly usage limit reached"', () => {
     expect(
       isRateLimitError({
