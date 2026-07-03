@@ -886,6 +886,33 @@ describe('syncBundledSkillsFromPackage', () => {
     fs.mkdirSync(skillSrcDir, { recursive: true });
     fs.writeFileSync(path.join(skillSrcDir, 'SKILL.md'), '# Bundled Content');
 
+    const customizedSkillName = 'reconciliation-customized-skill';
+    const customizedSkillSrcDir = path.join(
+      fakePackageRoot,
+      'src',
+      'skills',
+      customizedSkillName,
+    );
+    fs.mkdirSync(customizedSkillSrcDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(customizedSkillSrcDir, 'SKILL.md'),
+      '# Clean Source',
+    );
+
+    const destSkillsDir = path.join(fakeDestConfigDir, 'skills');
+    fs.mkdirSync(destSkillsDir, { recursive: true });
+
+    // Customized skill exists at destination but with customized content
+    const destCustomizedSkillDir = path.join(
+      destSkillsDir,
+      customizedSkillName,
+    );
+    fs.mkdirSync(destCustomizedSkillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(destCustomizedSkillDir, 'SKILL.md'),
+      '# Customized Content',
+    );
+
     const manifestDir = path.join(fakeDestConfigDir, '.oh-my-opencode-slim');
     fs.mkdirSync(manifestDir, { recursive: true });
     const manifestPath = path.join(manifestDir, 'skills-manifest.json');
@@ -903,6 +930,8 @@ describe('syncBundledSkillsFromPackage', () => {
 
     // Since destination didn't exist, it should install it
     expect(result.installed).toContain(skillName);
+    expect(result.skippedExisting).toContain(customizedSkillName);
+    expect(result.customized).toContain(customizedSkillName);
 
     // The manifest should be successfully reconciled and written as valid JSON
     expect(fs.existsSync(manifestPath)).toBe(true);
@@ -912,6 +941,41 @@ describe('syncBundledSkillsFromPackage', () => {
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.skills[skillName].status).toBe('managed');
     expect(parsed.skills[skillName].packageVersion).toBe('1.2.3');
+
+    // Customized skill should be marked customized with correct stagedPath
+    const custEntry = parsed.skills[customizedSkillName];
+    expect(custEntry.status).toBe('customized');
+    expect(custEntry.stagedPath).toBeDefined();
+    expect(fs.existsSync(custEntry.stagedPath)).toBe(true);
+    expect(
+      fs.readFileSync(path.join(custEntry.stagedPath, 'SKILL.md'), 'utf-8'),
+    ).toBe('# Clean Source');
+  });
+
+  test('lock owner-safety: releaseLock cleans up its own lock even if owner.json is missing', async () => {
+    const { acquireLock, releaseLock } = await import(
+      `./skill-sync?test=${importCounter++}`
+    );
+    const lockDir = path.join(
+      fakeDestConfigDir,
+      'test-missing-owner-json.lock',
+    );
+
+    // Acquire the lock first
+    const acquired = acquireLock(lockDir);
+    expect(acquired).toBe(true);
+
+    // Delete owner.json to simulate missing metadata
+    const metadataPath = path.join(lockDir, 'owner.json');
+    if (fs.existsSync(metadataPath)) {
+      fs.unlinkSync(metadataPath);
+    }
+
+    // Now call releaseLock
+    releaseLock(lockDir);
+
+    // The lock directory should be deleted successfully!
+    expect(fs.existsSync(lockDir)).toBe(false);
   });
 
   test('staged path safety: does not delete staging directories outside managed root', async () => {
@@ -1022,6 +1086,39 @@ describe('syncBundledSkillsFromPackage', () => {
     releaseLock(lockDir);
 
     expect(fs.existsSync(lockDir)).toBe(false);
+  });
+
+  test('lock owner-safety: releaseLock does not delete lock if metadata is overwritten by a foreign owner', async () => {
+    const { acquireLock, releaseLock } = await import(
+      `./skill-sync?test=${importCounter++}`
+    );
+    const lockDir = path.join(
+      fakeDestConfigDir,
+      'test-overwritten-metadata.lock',
+    );
+
+    // Acquire and track the path in memory
+    const acquired = acquireLock(lockDir);
+    expect(acquired).toBe(true);
+
+    // Overwrite owner.json with a foreign owner
+    const foreignOwner = {
+      pid: 99999,
+      host: 'foreign-host',
+      time: Date.now(),
+      token: 'foreign-token',
+    };
+    fs.writeFileSync(
+      path.join(lockDir, 'owner.json'),
+      JSON.stringify(foreignOwner),
+      'utf-8',
+    );
+
+    // releaseLock should NOT delete the lock directory because metadata is authoritative and foreign
+    releaseLock(lockDir);
+
+    expect(fs.existsSync(lockDir)).toBe(true);
+    expect(fs.existsSync(path.join(lockDir, 'owner.json'))).toBe(true);
   });
 
   test('crash safe recovery: recovers backup directory when destination directory is missing', async () => {

@@ -25,6 +25,8 @@ if (!localProcessToken) {
 }
 const PROCESS_TOKEN = localProcessToken;
 
+const ACQUIRED_LOCKS = new Set<string>();
+
 export interface SkillSyncResult {
   installed: string[];
   skippedExisting: string[];
@@ -212,7 +214,7 @@ const CROSS_HOST_LOCK_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
  * Avoids stealing active locks purely by time; writes owner metadata
  * and only steals dead same-host pid if detectable.
  */
-function acquireLock(lockDir: string): boolean {
+export function acquireLock(lockDir: string): boolean {
   const metadataPath = path.join(lockDir, 'owner.json');
   const currentHost = os.hostname();
   const currentPid = process.pid;
@@ -234,6 +236,7 @@ function acquireLock(lockDir: string): boolean {
   try {
     mkdirSync(lockDir);
     writeMetadata();
+    ACQUIRED_LOCKS.add(path.resolve(lockDir));
     return true;
   } catch (err) {
     if ((err as { code?: string }).code !== 'EEXIST') {
@@ -287,6 +290,7 @@ function acquireLock(lockDir: string): boolean {
     fs.rmSync(lockDir, { recursive: true, force: true });
     mkdirSync(lockDir);
     writeMetadata();
+    ACQUIRED_LOCKS.add(path.resolve(lockDir));
     return true;
   } catch (err) {
     log(`[skill-sync] Failed to check/recover lock at ${lockDir}:`, err);
@@ -298,29 +302,45 @@ function acquireLock(lockDir: string): boolean {
  * Releases the lock.
  */
 export function releaseLock(lockDir: string): void {
+  const resolvedPath = path.resolve(lockDir);
   try {
+    let isOurLock = false;
     const metadataPath = path.join(lockDir, 'owner.json');
+
     if (existsSync(metadataPath)) {
-      const content = fs.readFileSync(metadataPath, 'utf-8');
-      const metadata = JSON.parse(content);
-      if (
-        metadata.host === os.hostname() &&
-        metadata.pid === process.pid &&
-        metadata.token === PROCESS_TOKEN
-      ) {
+      try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        const metadata = JSON.parse(content);
+        if (
+          metadata.host === os.hostname() &&
+          metadata.pid === process.pid &&
+          metadata.token === PROCESS_TOKEN
+        ) {
+          isOurLock = true;
+        } else {
+          isOurLock = false;
+        }
+      } catch (err) {
+        log(`[skill-sync] Lock owner.json is unreadable/corrupt:`, err);
+        isOurLock = false;
+      }
+    } else if (ACQUIRED_LOCKS.has(resolvedPath)) {
+      isOurLock = true;
+    }
+
+    if (isOurLock) {
+      if (existsSync(lockDir)) {
         fs.rmSync(lockDir, { recursive: true, force: true });
-      } else {
-        log(
-          `[skill-sync] Skipping lock directory removal: lock is now owned by host=${metadata.host}, pid=${metadata.pid}, token=${metadata.token}`,
-        );
       }
     } else if (existsSync(lockDir)) {
       log(
-        `[skill-sync] Skipping lock directory removal: lock directory exists but owner.json was missing.`,
+        `[skill-sync] Skipping lock directory removal: lock is not owned by this process/token or owner.json check failed.`,
       );
     }
   } catch (err) {
     log(`[skill-sync] Failed to release lock at ${lockDir}:`, err);
+  } finally {
+    ACQUIRED_LOCKS.delete(resolvedPath);
   }
 }
 
@@ -740,14 +760,44 @@ export function syncBundledSkillsFromPackage(
                 updatedAt: new Date().toISOString(),
               };
             } else {
-              manifest.skills[skill.name] = {
-                status: 'customized',
-                packageVersion,
-                sourceHash,
-                lastManagedHash: '',
-                lastSeenHash: destHash,
-                updatedAt: new Date().toISOString(),
-              };
+              try {
+                const stagedSkillDir = path.join(
+                  manifestDir,
+                  'skill-updates',
+                  packageVersion,
+                  skill.name,
+                );
+                if (existsSync(stagedSkillDir)) {
+                  fs.rmSync(stagedSkillDir, { recursive: true, force: true });
+                }
+                mkdirSync(stagedSkillDir, { recursive: true });
+                copyDirRecursive(sourcePath, stagedSkillDir);
+
+                manifest.skills[skill.name] = {
+                  status: 'customized',
+                  packageVersion,
+                  sourceHash,
+                  lastManagedHash: '',
+                  lastSeenHash: destHash,
+                  stagedPath: stagedSkillDir,
+                  updatedAt: new Date().toISOString(),
+                };
+                staged.push(skill.name);
+                customized.push(skill.name);
+              } catch (err) {
+                log(
+                  `[skill-sync] Failed to stage update for customized skill ${skill.name} during recovery:`,
+                  err,
+                );
+                manifest.skills[skill.name] = {
+                  status: 'customized',
+                  packageVersion: 'unknown',
+                  sourceHash: '',
+                  lastManagedHash: '',
+                  lastSeenHash: destHash,
+                  updatedAt: new Date().toISOString(),
+                };
+              }
             }
           }
           continue;
