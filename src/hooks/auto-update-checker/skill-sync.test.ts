@@ -1593,4 +1593,80 @@ describe('syncBundledSkillsFromPackage', () => {
       '# Backup Content',
     );
   });
+
+  test('LEGACY_MANAGED_SKILL_HASHES: is exported as a record mapping string keys to string arrays', async () => {
+    const { LEGACY_MANAGED_SKILL_HASHES } = await import(
+      `./skill-sync?test=${importCounter++}`
+    );
+    expect(typeof LEGACY_MANAGED_SKILL_HASHES).toBe('object');
+    expect(LEGACY_MANAGED_SKILL_HASHES).not.toBeNull();
+    for (const key of Object.keys(LEGACY_MANAGED_SKILL_HASHES)) {
+      expect(typeof key).toBe('string');
+      expect(Array.isArray(LEGACY_MANAGED_SKILL_HASHES[key])).toBe(true);
+    }
+  });
+
+  test('conflict staging failure: failed skills are not double-counted as skippedExisting', async () => {
+    const skillName = 'test-double-counting-skill';
+    const skillSrcDir = path.join(fakePackageRoot, 'src', 'skills', skillName);
+    fs.mkdirSync(skillSrcDir, { recursive: true });
+    fs.writeFileSync(path.join(skillSrcDir, 'SKILL.md'), '# Bundle Content');
+
+    const manifestDir = path.join(fakeDestConfigDir, '.oh-my-opencode-slim');
+    fs.mkdirSync(manifestDir, { recursive: true });
+    const manifestPath = path.join(manifestDir, 'skills-manifest.json');
+
+    const initialManifest = {
+      schemaVersion: 1,
+      updatedAt: new Date().toISOString(),
+      skills: {
+        [skillName]: {
+          status: 'conflict',
+          packageVersion: '1.0.0',
+          sourceHash: 'old-source-hash',
+          lastManagedHash: 'old-managed-hash',
+          lastSeenHash: 'old-seen-hash',
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    };
+    fs.writeFileSync(manifestPath, JSON.stringify(initialManifest, null, 2));
+
+    const destSkillsDir = path.join(fakeDestConfigDir, 'skills');
+    fs.mkdirSync(destSkillsDir, { recursive: true });
+    // Destination is different (so we fall to destHash !== sourceHash, which attempts staging)
+    const destSkillDir = path.join(destSkillsDir, skillName);
+    fs.mkdirSync(destSkillDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(destSkillDir, 'SKILL.md'),
+      '# Different Content',
+    );
+
+    // Force staging copy recursive to fail by making dest directory nested path locked
+    const stagedSkillDir = path.join(
+      manifestDir,
+      'skill-updates',
+      '1.2.3',
+      skillName,
+    );
+    // Write package.json mock version
+    fs.writeFileSync(
+      path.join(fakePackageRoot, 'package.json'),
+      JSON.stringify({ version: '1.2.3' }),
+    );
+
+    // Make fs mkdirSync throw on stagedSkillDir or hijack mkdirSync via mock module if possible and cleaner, OR lock it!
+    // Locking stagedParent updates directory
+    const stagedParent = path.dirname(stagedSkillDir);
+    fs.mkdirSync(stagedParent, { recursive: true });
+    fs.chmodSync(stagedParent, 0o000);
+
+    const result = await syncBundledSkillsFromPackage(fakePackageRoot);
+
+    expect(result.failed).toContain(skillName);
+    expect(result.skippedExisting).not.toContain(skillName);
+
+    // Reset permissions so afterEach cleanup succeeds
+    fs.chmodSync(stagedParent, 0o777);
+  });
 });

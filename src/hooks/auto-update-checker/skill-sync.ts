@@ -8,7 +8,6 @@ import {
   readFileSync,
   renameSync,
   rmSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -69,6 +68,19 @@ interface SkillSyncOptions {
  * Hashes of historically managed versions of skills.
  * When a release changes skill content, this table must be populated
  * from the published npm package tarballs to allow upgrading existing users.
+ *
+ * How to populate:
+ * 1. Download previous releases of the npm package: `npm pack oh-my-opencode-slim@<version>`
+ * 2. Compute directory hash for each legacy skill directory inside the unpacked tarball:
+ *    `import { computeDirectoryHash } from './skill-sync';`
+ *    `const hash = computeDirectoryHash('path/to/extracted/package/src/skills/<skill-name>');`
+ * 3. Append the hash to the skill's string array below:
+ *    ```typescript
+ *    export const LEGACY_MANAGED_SKILL_HASHES: Record<string, string[]> = {
+ *      'simplify': ['hash1', 'hash2'],
+ *      'codemap': ['hash3']
+ *    };
+ *    ```
  */
 export const LEGACY_MANAGED_SKILL_HASHES: Record<string, string[]> = {};
 
@@ -274,7 +286,7 @@ export function acquireLock(lockDir: string): boolean {
         shouldSteal = true;
       }
     } else {
-      const stat = statSync(lockDir);
+      const stat = lstatSync(lockDir);
       ageMs = Date.now() - stat.mtimeMs;
       if (ageMs > 30000) {
         shouldSteal = true;
@@ -1130,6 +1142,7 @@ export function syncBundledSkillsFromPackage(
 
                 staged.push(skill.name);
                 customized.push(skill.name);
+                skippedExisting.push(skill.name);
                 log(
                   `[skill-sync] Conflicted skill ${skill.name} recovered as customized and staged at ${stagedSkillDir}`,
                 );
@@ -1141,7 +1154,6 @@ export function syncBundledSkillsFromPackage(
                 failed.push(skill.name);
               }
             }
-            skippedExisting.push(skill.name);
           }
         } else {
           if (destHash === sourceHash) {
