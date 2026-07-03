@@ -573,6 +573,64 @@ describe('ForegroundFallbackManager deduplication', () => {
 
     expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
   });
+
+  test('cascade continues when second error arrives within dedup window after model switch', async () => {
+    const { client, mocks } = createMockClient();
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true);
+
+    // Seed session: current model is first entry in orchestrator chain
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-cascade',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First error — model A fails, falls back to model B (openai/gpt-4o)
+    await mgr.handleEvent({
+      type: 'session.error',
+      properties: {
+        sessionID: 'sess-cascade',
+        error: { message: 'Rate limit exceeded' },
+      },
+    });
+
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const call1 = mocks.promptAsync.mock.calls[0] as [
+      {
+        body: { model: { providerID: string; modelID: string } };
+      },
+    ];
+    expect(call1[0].body.model.providerID).toBe('openai');
+    expect(call1[0].body.model.modelID).toBe('gpt-4o');
+
+    // Second error — model B also fails within the 5s dedup window.
+    // This is a DIFFERENT incident (new model), so it should NOT be deduped
+    // after the successful model switch cleared the lastTrigger timer.
+    await mgr.handleEvent({
+      type: 'session.error',
+      properties: {
+        sessionID: 'sess-cascade',
+        error: { message: 'Monthly usage limit reached' },
+      },
+    });
+
+    // Should trigger a second fallback despite being within the original
+    // 5-second dedup window, because the lastTrigger was reset after the
+    // successful model switch.
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
+    const call2 = mocks.promptAsync.mock.calls[1] as [
+      {
+        body: { model: { providerID: string; modelID: string } };
+      },
+    ];
+    expect(call2[0].body.model.providerID).toBe('google');
+    expect(call2[0].body.model.modelID).toBe('gemini-2.5-pro');
+  });
 });
 
 // ---------------------------------------------------------------------------

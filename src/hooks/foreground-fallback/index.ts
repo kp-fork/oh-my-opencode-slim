@@ -135,6 +135,10 @@ export class ForegroundFallbackManager {
   private readonly inProgress = new Set<string>();
   /** sessionID → timestamp of last trigger (for deduplication) */
   private readonly lastTrigger = new Map<string, number>();
+  /** sessionID → model in use when lastTrigger was set; dedup is bypassed
+   *  when the model has changed, allowing the cascade to continue when a
+   *  new fallback model also fails within the dedup window. */
+  private readonly lastTriggerModel = new Map<string, string | undefined>();
 
   constructor(
     private readonly client: OpencodeClient,
@@ -218,8 +222,12 @@ export class ForegroundFallbackManager {
               status?: { type?: string; message?: string };
             }
           | undefined;
-        if (!props?.sessionID || props.status?.type !== 'retry') break;
-        const msg = props.status.message?.toLowerCase() ?? '';
+        if (!props?.sessionID || !props.status?.message) break;
+        const msg = props.status.message.toLowerCase();
+        // Check for rate-limit signals in the status message regardless of
+        // status type. OpenCode proxies may emit monthly/weekly/5-hour usage
+        // limit errors with type 'error' instead of 'retry' on fresh sessions
+        // where no retry is attempted — the retry-type guard would miss them.
         if (
           msg.includes('rate limit') ||
           msg.includes('usage limit') ||
@@ -264,6 +272,7 @@ export class ForegroundFallbackManager {
           this.sessionTried.delete(id);
           this.inProgress.delete(id);
           this.lastTrigger.delete(id);
+          this.lastTriggerModel.delete(id);
         }
         break;
       }
@@ -284,9 +293,19 @@ export class ForegroundFallbackManager {
     if (this.inProgress.has(sessionID)) return;
 
     // Deduplicate: multiple events can fire for a single rate-limit event.
+    // Bypass dedup when the model changed since the last trigger — the new
+    // model's failure is a separate incident and the cascade should continue.
     const now = Date.now();
-    if (now - (this.lastTrigger.get(sessionID) ?? 0) < DEDUP_WINDOW_MS) return;
+    const lastModel = this.lastTriggerModel.get(sessionID);
+    const curModel = this.sessionModel.get(sessionID);
+    const modelChanged = lastModel !== undefined && lastModel !== curModel;
+    if (
+      !modelChanged &&
+      now - (this.lastTrigger.get(sessionID) ?? 0) < DEDUP_WINDOW_MS
+    )
+      return;
     this.lastTrigger.set(sessionID, now);
+    this.lastTriggerModel.set(sessionID, curModel);
 
     this.inProgress.add(sessionID);
     try {
