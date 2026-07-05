@@ -383,9 +383,8 @@ describe('ForegroundFallbackManager message.updated', () => {
 describe('ForegroundFallbackManager session.status', () => {
   test('triggers fallback on retry status with rate limit message', async () => {
     const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(client, makeChains(), true);
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 1);
 
-    // Pre-seed model
     await mgr.handleEvent({
       type: 'message.updated',
       properties: {
@@ -410,7 +409,7 @@ describe('ForegroundFallbackManager session.status', () => {
 
   test('triggers fallback on retry status with insufficient balance message', async () => {
     const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(client, makeChains(), true);
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 1);
 
     await mgr.handleEvent({
       type: 'message.updated',

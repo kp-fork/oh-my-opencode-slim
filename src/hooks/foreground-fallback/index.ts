@@ -149,7 +149,12 @@ export class ForegroundFallbackManager {
         }
         // Rate-limit on an individual message
         if (info.error && isRateLimitError(info.error)) {
-          await this.tryFallback(sessionID);
+          if (this.shouldIntervene(sessionID)) {
+            await this.tryFallback(sessionID);
+          }
+        } else {
+          // Successful response: clear retry count so recovery is not forgotten.
+          this.sessionRetries.delete(sessionID);
         }
         break;
       }
@@ -158,7 +163,12 @@ export class ForegroundFallbackManager {
         const props = event.properties as
           | { sessionID?: string; error?: unknown }
           | undefined;
-        if (props?.sessionID && props.error && isRateLimitError(props.error)) {
+        if (
+          props?.sessionID &&
+          props.error &&
+          isRateLimitError(props.error) &&
+          this.shouldIntervene(props.sessionID)
+        ) {
           await this.tryFallback(props.sessionID);
         }
         break;
@@ -173,10 +183,6 @@ export class ForegroundFallbackManager {
           | undefined;
         if (!props?.sessionID || !props.status?.message) break;
         const msg = props.status.message.toLowerCase();
-        // Check for rate-limit signals in the status message regardless of
-        // status type. OpenCode proxies may emit monthly/weekly/5-hour usage
-        // limit errors with type 'error' instead of 'retry' on fresh sessions
-        // where no retry is attempted - the retry-type guard would miss them.
         if (
           msg.includes('rate limit') ||
           msg.includes('usage limit') ||
@@ -188,28 +194,14 @@ export class ForegroundFallbackManager {
           msg.includes('high concurrency') ||
           msg.includes('reduce concurrency')
         ) {
-          // When OpenCode retries internally (type: "retry"), track
-          // attempts and only intervene after maxRetries consecutive
-          // failures. This lets OpenCode's own backoff handle transient
-          // spikes while preventing infinite freezes.
-          if (
-            props.status.type === 'retry' &&
-            typeof props.status.attempt === 'number'
-          ) {
-            const tried = this.sessionRetries.get(props.sessionID) ?? 0;
-            if (tried < this.maxRetries - 1) {
-              this.sessionRetries.set(props.sessionID, tried + 1);
-              log('[foreground-fallback] rate-limit retry', {
-                sessionID: props.sessionID,
-                attempt: props.status.attempt,
-                remaining: this.maxRetries - tried - 1,
-              });
-              break;
-            }
-            // Exhausted retries: intervene
-            this.sessionRetries.delete(props.sessionID);
+          // session.status retry path always counts toward the budget
+          // — even the first retry is absorbed before intervening.
+          if (this.checkRetryBudget(props.sessionID)) {
+            await this.tryFallback(props.sessionID);
           }
-          await this.tryFallback(props.sessionID);
+        } else {
+          // Non-rate-limit status: clear retry count (recovery).
+          this.sessionRetries.delete(props.sessionID);
         }
         break;
       }
@@ -248,6 +240,38 @@ export class ForegroundFallbackManager {
         break;
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Retry budget
+  // ---------------------------------------------------------------------------
+
+  /** True when the budget is exhausted and fallback should proceed.
+   *  When `force` is false (session.error / message.updated), fresh errors
+   *  with no prior retries always intervene immediately.
+   *  When `force` is true (session.status retry), the budget never bypasses
+   *  — even the first retry is counted. */
+  private checkRetryBudget(sessionID: string): boolean {
+    const tried = this.sessionRetries.get(sessionID) ?? 0;
+    if (tried < this.maxRetries - 1) {
+      this.sessionRetries.set(sessionID, tried + 1);
+      log('[foreground-fallback] rate-limit retry', {
+        sessionID,
+        attempt: tried + 1,
+        remaining: this.maxRetries - tried - 1,
+      });
+      return false;
+    }
+    this.sessionRetries.delete(sessionID);
+    return true;
+  }
+
+  /** For non-retry paths (session.error, message.updated): intervene immediately
+   *  unless the session is already in a retry window (has prior retries). */
+  private shouldIntervene(sessionID: string): boolean {
+    const tried = this.sessionRetries.get(sessionID) ?? 0;
+    if (tried === 0) return true;
+    return this.checkRetryBudget(sessionID);
   }
 
   // ---------------------------------------------------------------------------
