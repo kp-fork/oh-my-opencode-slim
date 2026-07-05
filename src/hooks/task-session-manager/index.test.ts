@@ -1,12 +1,10 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { BackgroundJobBoard } from '../../utils';
-import { createTaskSessionManagerHook, IDLE_RECONCILE_DELAY_MS } from './index';
+import { createTaskSessionManagerHook } from './index';
 
 /** Wait for the idle reconciliation delay (2s + margin) to flush. */
 function flushIdleReconcileDelay() {
-  return new Promise((resolve) =>
-    setTimeout(resolve, IDLE_RECONCILE_DELAY_MS + 100),
-  );
+  return new Promise((resolve) => setTimeout(resolve, 2100));
 }
 
 function createHook(options?: {
@@ -1223,145 +1221,6 @@ describe('task-session-manager hook', () => {
       terminalState: 'error',
       resultSummary: 'actual error from child',
     });
-  });
-
-  test('busy event cancels pending idle reconciliation', async () => {
-    const board = new BackgroundJobBoard();
-    const { hook } = createHook({ backgroundJobBoard: board });
-
-    setupCompletedJob(board);
-
-    const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    // Fire idle event (starts timer)
-    await hook.event({
-      event: {
-        type: 'session.status',
-        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
-      },
-    });
-
-    // Session goes busy again before timer fires — should cancel reconciliation
-    await hook.event({
-      event: {
-        type: 'session.status',
-        properties: { sessionID: 'parent-1', status: { type: 'busy' } },
-      },
-    });
-
-    await flushIdleReconcileDelay();
-
-    // Job should NOT be reconciled (timer was cancelled)
-    expect(board.get('child-1')).toMatchObject({
-      state: 'completed',
-      terminalUnreconciled: true,
-    });
-  });
-
-  test('deleted session cancels pending idle reconciliation', async () => {
-    const board = new BackgroundJobBoard();
-    const { hook } = createHook({ backgroundJobBoard: board });
-
-    setupCompletedJob(board);
-
-    const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    // Fire idle event (starts timer)
-    await hook.event({
-      event: {
-        type: 'session.status',
-        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
-      },
-    });
-
-    // session.deleted cancels the timer and clears the board for this parent
-    await hook.event({
-      event: {
-        type: 'session.deleted',
-        properties: { sessionID: 'parent-1' },
-      },
-    });
-
-    await flushIdleReconcileDelay();
-
-    // Job was removed by session.deleted (clearParent), not by reconciliation
-    expect(board.get('child-1')).toBeUndefined();
-  });
-
-  test('session.error cancels pending idle reconciliation', async () => {
-    const board = new BackgroundJobBoard();
-    const { hook } = createHook({ backgroundJobBoard: board });
-
-    setupCompletedJob(board);
-
-    const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    // Fire idle event (starts timer)
-    await hook.event({
-      event: {
-        type: 'session.status',
-        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
-      },
-    });
-
-    // session.error before timer fires — should cancel reconciliation
-    await hook.event({
-      event: {
-        type: 'session.error',
-        properties: {
-          sessionID: 'parent-1',
-          error: { name: 'generic' },
-        },
-      },
-    });
-
-    await flushIdleReconcileDelay();
-
-    // Job should NOT be reconciled (timer was cancelled)
-    expect(board.get('child-1')).toMatchObject({
-      state: 'completed',
-      terminalUnreconciled: true,
-    });
-  });
-
-  test('completion arriving after idle reconciliation delay is still dropped', async () => {
-    const board = new BackgroundJobBoard();
-    const { hook } = createHook({ backgroundJobBoard: board });
-
-    setupCompletedJob(board);
-
-    const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    // Fire idle event (starts 2s reconciliation timer)
-    await hook.event({
-      event: {
-        type: 'session.status',
-        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
-      },
-    });
-
-    // Wait for reconciliation to complete
-    await flushIdleReconcileDelay();
-
-    // Job is now reconciled
-    expect(board.get('child-1')).toMatchObject({
-      state: 'reconciled',
-    });
-
-    // Late completion arrives after reconciliation — should be silently dropped
-    const lateUpdate = board.updateStatus({
-      taskID: 'child-1',
-      state: 'error',
-      resultSummary: 'late completion after reconciliation',
-    });
-
-    // updateStatus returns existing record without modification
-    expect(lateUpdate).toBeDefined();
-    expect(lateUpdate?.state).toBe('reconciled');
   });
 
   test('does not reconcile terminal jobs before they are injected into a prompt', async () => {
