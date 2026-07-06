@@ -333,7 +333,7 @@ See the [Multiplexer Integration Guide](multiplexer-integration.md) for more det
 
 1. Remove the plugin from your OpenCode config:
 
-   Edit `~/.config/opencode/opencode.json` and remove `"oh-my-opencode-slim"` from the `plugin` array.
+   Edit `~/.config/opencode/opencode.json` and remove `"oh-my-opencode-slim"` from the `plugin` array. If the installer enabled LSP, set `"lsp": false` or remove the `"lsp"` key.
 
 2. Remove the TUI badge:
 
@@ -357,13 +357,20 @@ See the [Multiplexer Integration Guide](multiplexer-integration.md) for more det
    rm -rf ~/.cache/opencode/packages/oh-my-opencode-slim@latest
    ```
 
-6. Remove configuration files (optional):
+6. Remove the desktop companion binary (optional):
+
+   If you installed the companion, remove the downloaded binary and state:
+   ```bash
+   rm -rf ~/.local/share/opencode/storage/oh-my-opencode-slim
+   ```
+
+7. Remove configuration files (optional):
    ```bash
    rm -f ~/.config/opencode/oh-my-opencode-slim.json
    rm -f ~/.config/opencode/oh-my-opencode-slim.json.bak
    ```
 
-7. Remove skills (optional):
+8. Remove skills (optional):
    ```bash
    rm -rf ~/.config/opencode/skills/simplify
    rm -rf ~/.config/opencode/skills/codemap
