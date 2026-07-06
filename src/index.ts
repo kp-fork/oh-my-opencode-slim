@@ -306,6 +306,33 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     // Initialize hooks and register them with the registry
     hookRegistry = new HookRegistry();
 
+    // Wrap tool.execute.after handlers with per-hook error isolation.
+    // Preserves the old runPostToolHook behavior: one failing hook doesn't
+    // block the rest.
+    const wrapPostToolHook = (
+      name: string,
+      fn: (i: unknown, o: unknown) => Promise<void>,
+    ): ((i: unknown, o: unknown) => Promise<void>) => {
+      return async (i, o) => {
+        try {
+          await fn(i, o);
+        } catch (error) {
+          const meta = i as {
+            tool?: string;
+            sessionID?: string;
+            callID?: string;
+          };
+          log('[plugin] post-tool hook failed open', {
+            hook: name,
+            tool: meta.tool,
+            sessionID: meta.sessionID,
+            callID: meta.callID,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      };
+    };
+
     const phaseReminder = createPhaseReminderHook(sessionLifecycle);
     hookRegistry.register('experimental.chat.messages.transform', (i, o) =>
       phaseReminder['experimental.chat.messages.transform'](
@@ -333,13 +360,19 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         o as never,
       ),
     );
-    hookRegistry.register('tool.execute.after', (i, o) =>
-      postFileToolNudge['tool.execute.after'](i as never, o as never),
+    hookRegistry.register(
+      'tool.execute.after',
+      wrapPostToolHook('post-file-tool-nudge', (i, o) =>
+        postFileToolNudge['tool.execute.after'](i as never, o as never),
+      ),
     );
 
     const delegateTaskRetry = createDelegateTaskRetryHook(ctx);
-    hookRegistry.register('tool.execute.after', (i, o) =>
-      delegateTaskRetry['tool.execute.after'](i as never, o as never),
+    hookRegistry.register(
+      'tool.execute.after',
+      wrapPostToolHook('delegate-task-retry', (i, o) =>
+        delegateTaskRetry['tool.execute.after'](i as never, o as never),
+      ),
     );
 
     const applyPatch = createApplyPatchHook(ctx);
@@ -348,8 +381,11 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     );
 
     const jsonErrorRecovery = createJsonErrorRecoveryHook(ctx);
-    hookRegistry.register('tool.execute.after', (i, o) =>
-      jsonErrorRecovery['tool.execute.after'](i as never, o as never),
+    hookRegistry.register(
+      'tool.execute.after',
+      wrapPostToolHook('json-error-recovery', (i, o) =>
+        jsonErrorRecovery['tool.execute.after'](i as never, o as never),
+      ),
     );
 
     hookRegistry.register('tool.execute.before', (i, o) =>
@@ -361,8 +397,11 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         o as never,
       ),
     );
-    hookRegistry.register('tool.execute.after', (i, o) =>
-      taskSessionManagerHook['tool.execute.after'](i as never, o as never),
+    hookRegistry.register(
+      'tool.execute.after',
+      wrapPostToolHook('task-session-manager', (i, o) =>
+        taskSessionManagerHook['tool.execute.after'](i as never, o as never),
+      ),
     );
     interviewManager = createInterviewManager(ctx, config);
     presetManager = createPresetManager(ctx, config);
