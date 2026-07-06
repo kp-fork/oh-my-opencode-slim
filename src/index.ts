@@ -31,6 +31,7 @@ import {
   createReflectCommandHook,
   createTaskSessionManagerHook,
   ForegroundFallbackManager,
+  SessionLifecycle,
 } from './hooks';
 import { processImageAttachments } from './hooks/image-hook';
 import type { MessageWithParts } from './hooks/types';
@@ -268,6 +269,8 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       void multiplexerSessionManager.retryDeferredIdleClose(taskID);
     });
 
+    const sessionLifecycle = new SessionLifecycle(log);
+
     // Initialize auto-update checker hook
     autoUpdateChecker = createAutoUpdateCheckerHook(ctx, {
       autoUpdate: config.autoUpdate ?? true,
@@ -275,7 +278,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     });
 
     // Initialize phase reminder hook for workflow compliance
-    phaseReminderHook = createPhaseReminderHook();
+    phaseReminderHook = createPhaseReminderHook(sessionLifecycle);
 
     // Initialize available skills filter hook
     filterAvailableSkillsHook = createFilterAvailableSkillsHook(ctx, config);
@@ -287,6 +290,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     postFileToolNudgeHook = createPostFileToolNudgeHook({
       shouldInject: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
+      coordinator: sessionLifecycle,
     });
 
     chatHeadersHook = createChatHeadersHook(ctx);
@@ -306,6 +310,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       runtimeChains,
       config.fallback?.enabled !== false,
       config.fallback?.maxRetries ?? 3,
+      sessionLifecycle,
     );
 
     deepworkCommandHook = createDeepworkCommandHook();
@@ -320,6 +325,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         sessionAgentMap.get(sessionID) === 'orchestrator',
       isFallbackInProgress: (sessionID) =>
         foregroundFallback.isFallbackInProgress(sessionID),
+      coordinator: sessionLifecycle,
     });
     interviewManager = createInterviewManager(ctx, config);
     presetManager = createPresetManager(ctx, config);
@@ -847,15 +853,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         },
       );
 
-      await postFileToolNudgeHook.event(
-        input as {
-          event: {
-            type: string;
-            properties?: { info?: { id?: string }; sessionID?: string };
-          };
-        },
-      );
-
       if (
         event.type === 'permission.asked' ||
         event.type === 'question.asked'
@@ -889,6 +886,9 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           | undefined;
         const sessionID = extractSessionId(props?.info, props?.sessionID);
 
+        if (sessionID) {
+          sessionLifecycle.dispatchSessionDeleted(sessionID);
+        }
         companionManager.onSessionDeleted(sessionID);
         if (depthTracker && sessionID) {
           depthTracker.cleanup(sessionID);
