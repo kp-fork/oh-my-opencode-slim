@@ -160,10 +160,24 @@ function applyOverrides(
       agent._modelArray = override.model.map((m) =>
         typeof m === 'string' ? { id: m } : m,
       );
-      // Set config.model to the primary entry so the subagent has a valid
-      // model at launch time. ForegroundFallbackManager handles runtime
-      // failover to the remaining entries in _modelArray.
-      agent.config.model = agent._modelArray[0].id;
+      // Subagents are ephemeral, freshly-created sessions with no prior
+      // runtime state to preserve, so giving them a concrete config.model
+      // at launch time (the array's primary entry) is safe — see #9100e59.
+      // ForegroundFallbackManager handles runtime failover to the
+      // remaining entries in _modelArray.
+      //
+      // The orchestrator is different: it's a long-lived, foreground
+      // session where a user's runtime `/model` selection must survive
+      // across plugin re-inits (triggered by client.config.update() ->
+      // Instance.dispose(), e.g. on every subagent dispatch). Setting
+      // config.model here unconditionally would stomp that live
+      // selection every time this function re-runs, because it runs
+      // BEFORE the config() hook's merge with the live
+      // opencodeConfig.agent.orchestrator.model (see src/index.ts:524-528,
+      // added by #639). Leaving it undefined for the orchestrator lets
+      // that later, precedence-aware guard be the sole source of truth.
+      agent.config.model =
+        agent.name === 'orchestrator' ? undefined : agent._modelArray[0].id;
     } else {
       agent.config.model = override.model;
     }

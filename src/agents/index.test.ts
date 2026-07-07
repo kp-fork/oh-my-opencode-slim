@@ -236,7 +236,11 @@ describe('orchestrator agent', () => {
       { id: 'github-copilot/claude-3.5-haiku' },
       { id: 'openai/gpt-4' },
     ]);
-    expect(orchestrator?.config.model).toBe('google/gemini-3-pro');
+    // orchestrator is the long-lived foreground agent: config.model must
+    // stay undefined so a user's runtime /model selection (tracked via
+    // opencodeConfig.agent.orchestrator.model) is never overwritten by
+    // the config's static array default. See src/agents/index.ts:166.
+    expect(orchestrator?.config.model).toBeUndefined();
   });
 });
 
