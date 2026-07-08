@@ -168,10 +168,10 @@ The default generated configuration includes both `openai` and `opencode-go` pre
 
 ## Skill Reference
 
-| Skill | Description |
-| --- | --- |
-| `*` | All installed skills (wildcard) |
-| `simplify` | Code simplification |
+| Skill | Description | Source |
+| --- | --- | --- |
+| `*` | All installed skills (wildcard) | public |
+| `simplify` | Code simplification | public |
 
 ### For Alternative Providers
 

@@ -88,5 +88,7 @@ setting the top-level `preset` field:
 }
 ```
 
+This preset defines no `skills` or `mcps` per agent. It relies on model selection only (see [Bundled Model Mapping](#bundled-model-mapping)); agents use whatever skills are globally installed.
+
 For the complete configuration reference, see
 [Configuration](configuration.md).
