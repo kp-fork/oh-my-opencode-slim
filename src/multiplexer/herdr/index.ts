@@ -89,7 +89,7 @@ export class HerdrMultiplexer implements Multiplexer {
         const result = await this.runSplit(
           [this.agentAreaPaneId],
           'down',
-          directory,
+          attachDir,
         );
         paneId = result.paneId;
         if (!paneId) {
@@ -104,7 +104,7 @@ export class HerdrMultiplexer implements Multiplexer {
         const result = await this.runSplit(
           this.targetPaneArg(),
           this.paneDirection,
-          directory,
+          attachDir,
         );
         paneId = result.paneId;
         lastRawOutput = result.rawOutput;
