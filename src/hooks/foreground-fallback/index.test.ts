@@ -560,6 +560,76 @@ describe('ForegroundFallbackManager session.status', () => {
     });
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
+
+  test('non-rate-limit status does not clear retries (no infinite loop from abort side effects)', async () => {
+    const { client, mocks } = createMockClient();
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
+
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-nonrl',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First rate-limit: triggers fallback, sessionRetries set to 1
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-nonrl',
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+
+    // Non-rate-limit status (e.g. abort side effect): must NOT reset retries.
+    // If it did, the next rate-limit would see tried=0 and trigger immediate
+    // fallback again — the infinite loop.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-nonrl',
+        status: { type: 'retry', attempt: 1, message: 'aborted' },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+
+    // Second rate-limit: absorbed by budget (tried=1, not 0 from reset)
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-nonrl',
+        status: {
+          type: 'retry',
+          attempt: 2,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+
+    // Third rate-limit: budget exhausted at maxRetries-1=2, re-triggers
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-nonrl',
+        status: {
+          type: 'retry',
+          attempt: 3,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ---------------------------------------------------------------------------

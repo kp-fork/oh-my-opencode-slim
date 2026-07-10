@@ -225,12 +225,7 @@ export class ForegroundFallbackManager {
           isRateLimitError(props.error);
         if (isRateLimit) {
           if (this.shouldIntervene(props.sessionID)) {
-            // Let tryFallback handle retry-loop breaking internally —
-            // it sets inProgress first, so the task-session-manager sees
-            // isFallbackInProgress()=true during the abort idle window.
-            // External abort+wait would leave inProgress unset and the
-            // task manager would cancel the pending call on idle.
-            await this.tryFallback(props.sessionID);
+            await this.tryFallbackWithAbort(props.sessionID);
             this.sessionRetries.set(props.sessionID, 1);
           }
         }
@@ -313,6 +308,38 @@ export class ForegroundFallbackManager {
     // Deduplicate: multiple events can fire for a single rate-limit event.
     // Bypass dedup when the model changed since the last trigger - the new
     // model's failure is a separate incident and the cascade should continue.
+    if (this.isDeduped(sessionID)) return;
+
+    this.inProgress.add(sessionID);
+    try {
+      await this.execFallback(sessionID);
+    } finally {
+      this.inProgress.delete(sessionID);
+    }
+  }
+
+  /**
+   * Fallback path for session.status retry events.  Aborts the retry loop
+   * before falling back because promptAsync alone is ignored while the
+   * session is in retry mode.  inProgress is set first so the
+   * task-session-manager sees isFallbackInProgress()=true during the
+   * abort idle window and does not cancel the pending task call.
+   */
+  private async tryFallbackWithAbort(sessionID: string): Promise<void> {
+    if (!sessionID) return;
+    if (this.inProgress.has(sessionID)) return;
+    if (this.isDeduped(sessionID)) return;
+
+    this.inProgress.add(sessionID);
+    try {
+      await abortSessionWithTimeout(this.client, sessionID);
+      await this.execFallback(sessionID);
+    } finally {
+      this.inProgress.delete(sessionID);
+    }
+  }
+
+  private isDeduped(sessionID: string): boolean {
     const now = Date.now();
     const curModel = this.sessionModel.get(sessionID);
     const modelChanged =
@@ -322,13 +349,15 @@ export class ForegroundFallbackManager {
       !modelChanged &&
       now - (this.lastTrigger.get(sessionID) ?? 0) < DEDUP_WINDOW_MS
     )
-      return;
+      return true;
     this.lastTrigger.set(sessionID, now);
     if (curModel !== undefined) {
       this.lastTriggerModel.set(sessionID, curModel);
     }
+    return false;
+  }
 
-    this.inProgress.add(sessionID);
+  private async execFallback(sessionID: string): Promise<void> {
     try {
       let currentModel = this.sessionModel.get(sessionID);
       const agentName = this.sessionAgent.get(sessionID);
@@ -492,8 +521,6 @@ export class ForegroundFallbackManager {
         sessionID,
         error: err instanceof Error ? err.message : String(err),
       });
-    } finally {
-      this.inProgress.delete(sessionID);
     }
   }
 
