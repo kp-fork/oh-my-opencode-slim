@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_DISABLED_AGENTS } from './constants';
 import { CouncilConfigSchema } from './council-schema';
 
 const MANUAL_AGENT_NAMES = [
@@ -327,6 +328,17 @@ export const PluginConfigSchema = z
           'Orchestrator and council internal agents (councillor) cannot be disabled. ' +
           "By default, 'observer' is disabled. Remove it from this list and configure a vision-capable model to enable.",
       ),
+    image_routing: z
+      .enum(['auto', 'direct'])
+      .optional()
+      .describe(
+        'How image/PDF attachments are handled. ' +
+          '"direct" (default): pass attachments to the orchestrator untouched; ' +
+          '@observer stays available for manual delegation. ' +
+          '"auto": save attachments to disk and nudge the orchestrator to ' +
+          'delegate to @observer. Requires observer to be enabled ' +
+          '(not in disabled_agents).',
+      ),
     disabled_mcps: z.array(z.string()).optional(),
     disabled_tools: z
       .array(z.string())
@@ -364,6 +376,19 @@ export const PluginConfigSchema = z
           'presets',
           presetName,
         ]);
+      }
+    }
+
+    if (value.image_routing === 'auto') {
+      const disabled = value.disabled_agents ?? DEFAULT_DISABLED_AGENTS;
+      if (disabled.includes('observer')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'image_routing "auto" requires observer to be enabled. ' +
+            'Remove "observer" from disabled_agents.',
+          path: ['image_routing'],
+        });
       }
     }
   });
