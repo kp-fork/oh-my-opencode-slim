@@ -533,6 +533,33 @@ describe('ForegroundFallbackManager session.status', () => {
     });
     expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
   });
+
+  test('triggers fallback when rate-limit text is in props.error instead of status.message', async () => {
+    const { client, mocks } = createMockClient();
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
+
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-error-field',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // status.message is benign but props.error carries the rate-limit signal
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-error-field',
+        status: { type: 'retry', attempt: 1, message: 'retrying...' },
+        error: { message: 'Usage exceeded for this billing period' },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

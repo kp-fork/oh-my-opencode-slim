@@ -206,21 +206,24 @@ export class ForegroundFallbackManager {
           | {
               sessionID?: string;
               status?: { type?: string; message?: string; attempt?: number };
+              error?: unknown;
             }
           | undefined;
-        if (!props?.sessionID || !props.status?.message) break;
-        const msg = props.status.message.toLowerCase();
-        if (
-          msg.includes('rate limit') ||
-          msg.includes('usage limit') ||
-          msg.includes('usage exceeded') ||
-          msg.includes('quota exceeded') ||
-          msg.includes('exceededbudget') ||
-          msg.includes('over budget') ||
-          msg.includes('insufficient') ||
-          msg.includes('high concurrency') ||
-          msg.includes('reduce concurrency')
-        ) {
+        if (!props?.sessionID) break;
+        const msg = props.status?.message?.toLowerCase() ?? '';
+        const isRateLimit =
+          (msg &&
+            (msg.includes('rate limit') ||
+              msg.includes('usage limit') ||
+              msg.includes('usage exceeded') ||
+              msg.includes('quota exceeded') ||
+              msg.includes('exceededbudget') ||
+              msg.includes('over budget') ||
+              msg.includes('insufficient') ||
+              msg.includes('high concurrency') ||
+              msg.includes('reduce concurrency'))) ||
+          isRateLimitError(props.error);
+        if (isRateLimit) {
           // Abort retry loop before falling back — promptAsync alone
           // is ignored when the session is in retry mode.
           if (this.shouldIntervene(props.sessionID)) {
