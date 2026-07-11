@@ -333,7 +333,24 @@ export const PluginConfigSchema = z
           'Orchestrator and council internal agents (councillor) cannot be disabled. ' +
           "By default, 'observer' is disabled. Remove it from this list and configure a vision-capable model to enable.",
       ),
-    disabled_mcps: z.array(z.string()).optional(),
+    image_routing: z
+      .enum(['auto', 'direct'])
+      .optional()
+      .describe(
+        'How image attachments are handled. ' +
+          'When omitted, preserves legacy conditional behavior: intercept ' +
+          'attachments only when observer is enabled. "auto": requires ' +
+          'observer to be enabled and saves attachments to disk before ' +
+          'nudging delegation to @observer. "direct": always passes ' +
+          'attachments to the orchestrator untouched.',
+      ),
+    disabled_mcps: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'MCP server names to disable completely. Disabled servers are not ' +
+          'started and cannot be used by agents.',
+      ),
     disabled_tools: z
       .array(z.string())
       .optional()

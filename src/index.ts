@@ -15,6 +15,7 @@ import {
   DEFAULT_MAX_SESSIONS_PER_AGENT,
   DEFAULT_READ_CONTEXT_MAX_FILES,
   DEFAULT_READ_CONTEXT_MIN_LINES,
+  resolveImageRouting,
 } from './config/constants';
 import {
   getActiveRuntimePreset,
@@ -1155,6 +1156,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       processImageAttachments({
         messages: typedOutput.messages,
         workDir: ctx.directory,
+        imageRouting: resolveImageRouting(config.image_routing),
         disabledAgents,
         log,
       });

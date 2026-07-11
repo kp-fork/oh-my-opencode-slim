@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripJsonComments } from '../cli/config-io';
 import { getConfigSearchDirs } from '../cli/paths';
+import { DEFAULT_DISABLED_AGENTS } from './constants';
 import { type PluginConfig, PluginConfigSchema } from './schema';
 
 /**
@@ -155,6 +156,30 @@ function findConfigPathInDirs(
   }
 
   return null;
+}
+
+function validateFinalImageRouting(
+  config: PluginConfig,
+  configPath: string,
+  options?: LoadPluginConfigOptions,
+): boolean {
+  if (config.image_routing !== 'auto') return true;
+
+  const disabledAgents = config.disabled_agents ?? DEFAULT_DISABLED_AGENTS;
+  if (!disabledAgents.includes('observer')) return true;
+
+  const message =
+    'image_routing "auto" requires observer to be enabled. ' +
+    'Remove "observer" from disabled_agents.';
+  options?.onWarning?.({
+    path: configPath,
+    kind: 'invalid-schema',
+    message,
+  });
+  if (!options?.silent) {
+    console.warn(`[oh-my-opencode-slim] Invalid config: ${message}`);
+  }
+  return false;
 }
 
 /**
@@ -332,6 +357,12 @@ export function loadPluginConfig(
       debug: config.companion.debug ?? false,
     };
   }
+
+  validateFinalImageRouting(
+    config,
+    projectConfigPath ?? userConfigPath ?? '',
+    options,
+  );
 
   return config;
 }
