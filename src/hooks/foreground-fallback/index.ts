@@ -4,7 +4,9 @@
  * When OpenCode fires a session.error, message.updated, or session.status
  * event containing a rate-limit signal, this manager:
  *   1. Looks up the next untried model in the agent's configured chain
- *   2. Aborts the rate-limited prompt via client.session.abort()
+ *   2. Aborts the rate-limited prompt via client.session.abort() on the
+ *      session.status retry path; session.error and message.updated paths
+ *      re-prompt directly without abort.
  *   3. Re-queues the last user message via client.session.promptAsync()
  *      with the new model - promptAsync returns immediately so we never
  *      block the event handler waiting for a full LLM response.
@@ -49,6 +51,7 @@ const RATE_LIMIT_PATTERNS = [
 ];
 
 const OUTAGE_STATUS_CODES = new Set([500, 502, 503, 504]);
+// ponytail: validated against real OpenCode error shapes
 const TRANSPORT_CODES = new Set([
   'ECONNREFUSED',
   'ECONNRESET',
@@ -279,7 +282,7 @@ export class ForegroundFallbackManager {
         }
         // Failover-worthy error on an individual message
         if (info.error && isFailoverError(info.error)) {
-          if (this.shouldIntervene(sessionID)) {
+          if (this.shouldTriggerFallback(sessionID)) {
             await this.tryFallback(sessionID);
           }
         } else {
@@ -299,7 +302,7 @@ export class ForegroundFallbackManager {
           sessionID &&
           props.error &&
           isFailoverError(props.error) &&
-          this.shouldIntervene(sessionID)
+          this.shouldTriggerFallback(sessionID)
         ) {
           await this.tryFallback(sessionID);
         }
@@ -324,7 +327,22 @@ export class ForegroundFallbackManager {
             (props.status.message !== undefined &&
               isFailoverError({ message: props.status.message })));
         if (isFailoverRetry) {
-          if (this.shouldIntervene(sessionID)) {
+          // Guard: stale retry event from a previous model's retry loop.
+          // When the model changed since the last trigger and we're still
+          // within the dedup window, this is a delayed event from the old
+          // model after a fallback already switched models. Skip it.
+          const prevModel = this.lastTriggerModel.get(sessionID);
+          const curModel = this.sessionModel.get(sessionID);
+          const lastTime = this.lastTrigger.get(sessionID) ?? 0;
+          if (
+            prevModel !== undefined &&
+            curModel !== undefined &&
+            prevModel !== curModel &&
+            Date.now() - lastTime < DEDUP_WINDOW_MS
+          ) {
+            break;
+          }
+          if (this.shouldTriggerFallback(sessionID)) {
             await this.tryFallbackWithAbort(sessionID);
           }
           break;
@@ -378,7 +396,7 @@ export class ForegroundFallbackManager {
    *  Used by shouldIntervene when tried > 0 — each retry counts toward the
    *  budget and only triggers fallback after maxRetries - 1 absorptions.
    *  First failover retry (tried === 0) bypasses the counter via shouldIntervene. */
-  private checkRetryBudget(sessionID: string): boolean {
+  private consumeRetryBudget(sessionID: string): boolean {
     const tried = this.sessionRetries.get(sessionID) ?? 0;
     if (tried < this.maxRetries - 1) {
       this.sessionRetries.set(sessionID, tried + 1);
@@ -393,12 +411,12 @@ export class ForegroundFallbackManager {
     return true;
   }
 
-  /** For non-retry paths (session.error, message.updated): intervene immediately
-   *  unless the session is already in a retry window (has prior retries). */
-  private shouldIntervene(sessionID: string): boolean {
+  /** Intervene immediately on first occurrence (tried === 0), otherwise
+   *  delegate to retry budget. Used by all three event paths. */
+  private shouldTriggerFallback(sessionID: string): boolean {
     const tried = this.sessionRetries.get(sessionID) ?? 0;
     if (tried === 0) return true;
-    return this.checkRetryBudget(sessionID);
+    return this.consumeRetryBudget(sessionID);
   }
 
   private isRecoveredStatus(statusType: string | undefined): boolean {

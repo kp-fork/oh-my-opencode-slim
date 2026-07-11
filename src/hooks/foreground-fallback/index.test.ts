@@ -673,7 +673,11 @@ describe('ForegroundFallbackManager session.status', () => {
       type: 'session.status',
       properties: {
         sessionID: 'sess-retry2',
-        status: { type: 'retry', attempt: 1, message: 'rate limit, retrying...' },
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
+        },
       },
     });
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
@@ -770,6 +774,77 @@ describe('ForegroundFallbackManager session.status', () => {
         },
       },
     });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('ignores stale retry event from original model after fallback switches models', async () => {
+    // greptile-apps race condition: after a fallback succeeds and the manager
+    // switches to model B, a delayed retry event from model A's original retry
+    // loop (already in-flight when the abort happened) should NOT trigger a
+    // second fallback — it carries the old model's error, not model B's.
+    const calls: string[] = [];
+    const { client, mocks } = createMockClient({
+      abortImpl: async () => {
+        calls.push('abort');
+      },
+      promptAsyncImpl: async () => {
+        calls.push('promptAsync');
+        return {};
+      },
+    });
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
+
+    // Seed session with model A (anthropic/claude-opus-4-5)
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-stale',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First retry event: model A rate-limited → triggers fallback to model B
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-stale',
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const firstCall = mocks.promptAsync.mock.calls[0] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(firstCall[0].body.model).toEqual({
+      providerID: 'openai',
+      modelID: 'gpt-4o',
+    });
+
+    // Stale retry event from the ORIGINAL model A arrives after the switch.
+    // The session model is now openai/gpt-4o, so this event should be ignored.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-stale',
+        status: {
+          type: 'retry',
+          attempt: 2,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    // Should NOT trigger another fallback — the event is stale
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
 });
