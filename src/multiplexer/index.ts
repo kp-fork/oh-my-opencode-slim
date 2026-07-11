@@ -3,7 +3,6 @@
  */
 
 export {
-  clearMultiplexerCache,
   getMultiplexer,
   startAvailabilityCheck,
 } from './factory';

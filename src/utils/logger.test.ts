@@ -2,13 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-  flushLoggerForTesting,
-  getLogDir,
-  initLogger,
-  log,
-  resetLogger,
-} from './logger';
+import { flushLoggerForTesting, initLogger, log, resetLogger } from './logger';
 
 describe('logger', () => {
   let tmpDir: string;
@@ -177,25 +171,6 @@ describe('logger', () => {
     const content = fs.readFileSync(logPath, 'utf-8');
     expect(content).toContain('circular data');
     expect(content).toContain('[unserializable]');
-  });
-
-  test('getLogDir returns OPENCODE_LOG_DIR when set', () => {
-    expect(getLogDir()).toBe(tmpDir);
-  });
-
-  test('getLogDir falls back to os.homedir when env not set', () => {
-    delete process.env.OPENCODE_LOG_DIR;
-    try {
-      expect(getLogDir()).toBe(
-        path.join(os.homedir(), '.local/share/opencode/log'),
-      );
-    } finally {
-      if (origLogDir === undefined) {
-        delete process.env.OPENCODE_LOG_DIR;
-      } else {
-        process.env.OPENCODE_LOG_DIR = origLogDir;
-      }
-    }
   });
 
   test('handles complex data structures', async () => {

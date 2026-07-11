@@ -81,30 +81,6 @@ export function getMultiplexer(config: MultiplexerConfig): Multiplexer | null {
 }
 
 /**
- * Clear the multiplexer cache (useful for testing)
- */
-export function clearMultiplexerCache(): void {
-  // No-op: multiplexers are no longer cached.
-}
-
-/**
- * Get the effective multiplexer type for auto mode
- * Returns the actual type that would be used (tmux/zellij/herdr/none)
- */
-export function getAutoMultiplexerType(): 'tmux' | 'zellij' | 'herdr' | 'none' {
-  if (process.env.TMUX) {
-    return 'tmux';
-  }
-  if (process.env.ZELLIJ) {
-    return 'zellij';
-  }
-  if (process.env.HERDR_ENV || process.env.HERDR_PANE_ID) {
-    return 'herdr';
-  }
-  return 'none';
-}
-
-/**
  * Start background availability check for a multiplexer
  */
 export function startAvailabilityCheck(config: MultiplexerConfig): void {

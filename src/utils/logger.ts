@@ -76,8 +76,6 @@ export function initLogger(sessionId: string): void {
   cleanupOldLogs(dir);
 }
 
-export { getLogDir };
-
 /** @internal Reset logger state for testing */
 export function resetLogger(): void {
   logFile = null;

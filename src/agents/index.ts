@@ -729,23 +729,3 @@ export function getDisabledAgents(config?: PluginConfig): Set<string> {
   return disabled;
 }
 
-/**
- * Get the list of enabled (non-disabled) agent names.
- */
-export function getEnabledAgentNames(config?: PluginConfig): string[] {
-  const disabled = getDisabledAgents(config);
-  if (!config?.council) {
-    disabled.add('council');
-  }
-  const customAgentNames = getCustomAgentNames(config).filter(
-    (name) => !disabled.has(name),
-  );
-  const acpAgentNames = getAcpAgentNames(config).filter(
-    (name) => !disabled.has(name),
-  );
-  return [
-    ...ALL_AGENT_NAMES.filter((name) => !disabled.has(name)),
-    ...customAgentNames,
-    ...acpAgentNames,
-  ];
-}

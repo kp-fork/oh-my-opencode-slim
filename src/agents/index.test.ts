@@ -12,7 +12,6 @@ import {
   createAgents,
   getAgentConfigs,
   getDisabledAgents,
-  getEnabledAgentNames,
   isSubagent,
 } from './index';
 
@@ -975,31 +974,6 @@ describe('disabled_agents', () => {
     expect(disabled.has('designer')).toBe(true);
     expect(disabled.has('orchestrator')).toBe(false);
     expect(disabled.has('councillor')).toBe(false);
-  });
-
-  test('getEnabledAgentNames filters correctly', () => {
-    const config: PluginConfig = {
-      disabled_agents: ['designer', 'fixer'],
-    };
-    const enabled = getEnabledAgentNames(config);
-    expect(enabled).not.toContain('designer');
-    expect(enabled).not.toContain('fixer');
-    expect(enabled).toContain('orchestrator');
-    expect(enabled).toContain('explorer');
-  });
-
-  test('getEnabledAgentNames includes enabled custom agents', () => {
-    const config: PluginConfig = {
-      disabled_agents: ['janitor'],
-      agents: {
-        janitor: { model: 'openai/gpt-5.6-luna' },
-        reviewer: { model: 'openai/gpt-5.6-luna' },
-      },
-    };
-
-    const enabled = getEnabledAgentNames(config);
-    expect(enabled).toContain('reviewer');
-    expect(enabled).not.toContain('janitor');
   });
 
   test('empty disabled_agents creates observer but not unconfigured council', () => {
