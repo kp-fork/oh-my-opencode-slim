@@ -324,7 +324,7 @@ export class ForegroundFallbackManager {
             (props.status.message !== undefined &&
               isFailoverError({ message: props.status.message })));
         if (isFailoverRetry) {
-          if (this.checkRetryBudget(sessionID)) {
+          if (this.shouldIntervene(sessionID)) {
             await this.tryFallbackWithAbort(sessionID);
           }
           break;
@@ -375,10 +375,9 @@ export class ForegroundFallbackManager {
   // ---------------------------------------------------------------------------
 
   /** Increment retry counter and return true when the budget is exhausted.
-   *  Used by the session.status retry path — each retry counts toward the
+   *  Used by shouldIntervene when tried > 0 — each retry counts toward the
    *  budget and only triggers fallback after maxRetries - 1 absorptions.
-   *  Non-retry paths (session.error / message.updated) use shouldIntervene(),
-   *  which bypasses the counter on first occurrence. */
+   *  First failover retry (tried === 0) bypasses the counter via shouldIntervene. */
   private checkRetryBudget(sessionID: string): boolean {
     const tried = this.sessionRetries.get(sessionID) ?? 0;
     if (tried < this.maxRetries - 1) {
