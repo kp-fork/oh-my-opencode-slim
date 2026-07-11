@@ -686,6 +686,19 @@ export function createInterviewService(
     output.parts.push(
       createInternalAgentTextPart(buildKickoffPrompt(idea, maxQuestions)),
     );
+
+    // best-effort: rename the session so it's identifiable in the session list.
+    // never block interview creation if the rename fails.
+    let sessionTitle = `Interview: ${idea}`;
+    if (sessionTitle.length > 50) {
+      sessionTitle = `${sessionTitle.slice(0, 49)}…`;
+    }
+    ctx.client.session
+      .update?.({
+        path: { id: input.sessionID },
+        body: { title: sessionTitle },
+      })
+      ?.catch(() => {});
   }
 
   async function handleEvent(input: {
