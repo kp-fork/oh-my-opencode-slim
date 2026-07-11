@@ -847,6 +847,85 @@ describe('ForegroundFallbackManager session.status', () => {
     expect(mocks.abort).toHaveBeenCalledTimes(1);
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
+
+  test('does NOT ignore genuine retry from fallback model within dedup window', async () => {
+    // greptile-apps issue #2: a genuine retry from the fallback model (model B)
+    // arriving within the dedup window should trigger a fallback, not be ignored.
+    // The previous fix used lastTriggerModel which still held model A, causing
+    // model B's genuine retry to be mistaken for a stale retry from model A.
+    const calls: string[] = [];
+    const { client, mocks } = createMockClient({
+      abortImpl: async () => {
+        calls.push('abort');
+      },
+      promptAsyncImpl: async () => {
+        calls.push('promptAsync');
+        return {};
+      },
+    });
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 1); // maxRetries=1 for immediate fallback
+
+    // Seed session with model A
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-genuine-retry',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First retry event: model A rate-limited → triggers fallback to model B
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-genuine-retry',
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const firstCall = mocks.promptAsync.mock.calls[0] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(firstCall[0].body.model).toEqual({
+      providerID: 'openai',
+      modelID: 'gpt-4o',
+    });
+
+    // Now model B (openai/gpt-4o) is active. A GENUINE retry from model B
+    // arrives within the dedup window (immediately after). This should trigger
+    // another fallback to model C (google/gemini-2.5-pro), NOT be ignored.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-genuine-retry',
+        status: {
+          type: 'retry',
+          attempt: 1, // attempt resets for new model
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    // Should trigger a second fallback to model C
+    expect(mocks.abort).toHaveBeenCalledTimes(2);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
+    const secondCall = mocks.promptAsync.mock.calls[1] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(secondCall[0].body.model).toEqual({
+      providerID: 'google',
+      modelID: 'gemini-2.5-pro',
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -328,20 +328,29 @@ export class ForegroundFallbackManager {
               isFailoverError({ message: props.status.message })));
         if (isFailoverRetry) {
           // Guard: stale retry event from a previous model's retry loop.
-          // When the model changed since the last trigger and we're still
-          // within the dedup window, this is a delayed event from the old
-          // model after a fallback already switched models. Skip it.
+          // After a fallback, lastTriggerModel holds the OLD model (set by
+          // isDeduped before the fallback), while sessionModel holds the NEW
+          // model. A stale retry from the old model arrives with attempt > 1
+          // (continuation of old retry loop). A genuine retry from the new
+          // model arrives with attempt === 1 (first retry for new model).
           const prevModel = this.lastTriggerModel.get(sessionID);
           const curModel = this.sessionModel.get(sessionID);
-          const lastTime = this.lastTrigger.get(sessionID) ?? 0;
-          if (
+          const lastTriggerTime = this.lastTrigger.get(sessionID) ?? 0;
+          const attempt = props.status?.attempt ?? 1;
+          const modelChanged =
             prevModel !== undefined &&
             curModel !== undefined &&
-            prevModel !== curModel &&
-            Date.now() - lastTime < DEDUP_WINDOW_MS
-          ) {
+            prevModel !== curModel;
+          const withinDedupWindow =
+            Date.now() - lastTriggerTime < DEDUP_WINDOW_MS;
+          if (modelChanged && withinDedupWindow && attempt > 1) {
+            // Model changed since last trigger, within dedup window, and
+            // attempt > 1: this is a stale retry from the old model's
+            // retry loop (continuation of previous attempts). Skip it.
             break;
           }
+          // Otherwise (attempt === 1, or model didn't change, or outside
+          // dedup window): process as genuine retry for current model.
           if (this.shouldTriggerFallback(sessionID)) {
             await this.tryFallbackWithAbort(sessionID);
           }
