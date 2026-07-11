@@ -14,7 +14,7 @@ async function getJSDOM() {
   return JSDOM;
 }
 
-export function wordCount(text: string) {
+export function wordCount(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
   return trimmed.split(/\s+/).length;
@@ -28,7 +28,7 @@ function quote(value: unknown) {
   return JSON.stringify(value ?? '');
 }
 
-export function frontmatter(metadata: Record<string, unknown>) {
+export function frontmatter(metadata: Record<string, unknown>): string {
   const lines = ['---'];
   for (const [key, value] of Object.entries(metadata)) {
     if (value === undefined) continue;
@@ -47,7 +47,7 @@ export function frontmatter(metadata: Record<string, unknown>) {
   return lines.join('\n');
 }
 
-export function trimBlankRuns(input: string) {
+export function trimBlankRuns(input: string): string {
   return input.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -158,7 +158,7 @@ function extractStructuredText(root: Element | null) {
   return cleanExtractedText(chunks.join(''));
 }
 
-export function cleanHeadingText(input: string) {
+export function cleanHeadingText(input: string): string {
   const normalized = trimBlankRuns(input).replace(/¶+$/g, '').trim();
   if (/^(?:C|F)#$/.test(normalized)) return normalized;
   if (/\s#+$/.test(normalized)) {
@@ -167,7 +167,7 @@ export function cleanHeadingText(input: string) {
   return normalized;
 }
 
-export function cleanFetchedMarkdown(input: string) {
+export function cleanFetchedMarkdown(input: string): string {
   const output = mapOutsideCodeBlocks(input, (value) =>
     value
       .replace(/^\s*!\[[^\]]*\]\([^)]+\)\s*$/gm, 'Image omitted')
@@ -182,7 +182,7 @@ export function cleanFetchedMarkdown(input: string) {
   return trimBlankRuns(output);
 }
 
-export function cleanFetchedText(input: string) {
+export function cleanFetchedText(input: string): string {
   return trimBlankRuns(input);
 }
 
@@ -190,7 +190,7 @@ export function withTruncationMarker(
   content: string,
   format: 'text' | 'markdown' | 'html',
   truncated: boolean,
-) {
+): string {
   if (!truncated) return content;
   if (format === 'html') return `${content}\n<!-- [..content truncated..] -->`;
   return `${content}\n\n[..content truncated..]`;
@@ -200,7 +200,7 @@ export function joinRenderedContent(
   metadata: string,
   content: string,
   format: 'text' | 'markdown' | 'html',
-) {
+): string {
   if (!metadata) return content;
   if (!content) {
     return format === 'html' ? `<!--\n${metadata.trim()}\n-->` : metadata;
@@ -221,7 +221,7 @@ export function joinRenderedContent(
 export function renderMessageForFormat(
   content: string,
   format: 'text' | 'markdown' | 'html',
-) {
+): string {
   if (format === 'html') return `<pre>${escapeHtml(content)}</pre>`;
   return content;
 }
