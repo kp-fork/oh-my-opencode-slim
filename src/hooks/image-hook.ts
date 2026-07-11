@@ -166,11 +166,18 @@ function writeUniqueFile(
 export function processImageAttachments(args: {
   messages: MessageWithParts[];
   workDir: string;
+  imageRouting: 'auto' | 'direct';
   disabledAgents: Set<string>;
   log: (msg: string) => void;
 }): void {
-  const { messages, workDir, disabledAgents, log } = args;
+  const { messages, workDir, imageRouting, disabledAgents, log } = args;
 
+  // direct mode: never intercept attachments; the orchestrator handles them
+  // inline. @observer remains available for manual delegation.
+  if (imageRouting === 'direct') return;
+
+  // auto mode: observer must be enabled (enforced at config load). Retain
+  // this guard as defense-in-depth in case validation is bypassed.
   const observerEnabled = !disabledAgents.has('observer');
   if (!observerEnabled) return;
 
@@ -219,6 +226,7 @@ export function processImageAttachments(args: {
 
     // Save each image to .opencode/images/ and collect paths
     const savedPaths: string[] = [];
+    const savedImageParts = new Set<ImagePart>();
     for (const p of imageParts) {
       const url = p.url as string | undefined;
       const filename =
@@ -241,17 +249,30 @@ export function processImageAttachments(args: {
             : extFromMime(decoded.mime);
           const name = `${baseName}-${hash}${ext}`;
           const filePath = writeUniqueFile(targetDir, name, decoded.data, log);
-          if (filePath) savedPaths.push(filePath);
+          if (filePath) {
+            savedPaths.push(filePath);
+            savedImageParts.add(p);
+          }
         }
       }
     }
 
     const pathsText =
       savedPaths.length > 0 ? ` Saved to: ${savedPaths.join(', ')}` : '';
-    log(`[image-hook] stripping image/file parts, saving to disk${pathsText}`);
+    log(`[image-hook] saved image/file parts to disk${pathsText}`);
+    log(
+      `[image-routing] auto mode: intercepted ${savedImageParts.size} image(s), delegating to @observer`,
+    );
+
+    // If no image could be saved, do not strip the parts: the orchestrator
+    // would receive a nudge with no usable path and the bytes would be lost.
+    if (savedPaths.length === 0) {
+      log('[image-hook] no images saved; leaving original parts in message');
+      continue;
+    }
 
     msg.parts = msg.parts
-      .filter((p) => !isImagePart(p as ImagePart))
+      .filter((p) => !savedImageParts.has(p as ImagePart))
       .concat([
         {
           type: 'text',

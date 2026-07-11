@@ -66,6 +66,64 @@ describe('loadPluginConfig', () => {
     expect(config.autoUpdate).toBe(false);
   });
 
+  test('validates auto image routing after project enables Observer', () => {
+    const userConfigPath = path.join(userConfigDir, 'opencode');
+    const projectDir = path.join(tempDir, 'project');
+    const projectConfigDir = path.join(projectDir, '.opencode');
+    fs.mkdirSync(userConfigPath, { recursive: true });
+    fs.mkdirSync(projectConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userConfigPath, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ image_routing: 'auto' }),
+    );
+    fs.writeFileSync(
+      path.join(projectConfigDir, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ disabled_agents: [] }),
+    );
+
+    const config = loadPluginConfig(projectDir, { silent: true });
+    expect(config.image_routing).toBe('auto');
+    expect(config.disabled_agents).toEqual([]);
+  });
+
+  test('validates auto image routing after project enables it', () => {
+    const userConfigPath = path.join(userConfigDir, 'opencode');
+    const projectDir = path.join(tempDir, 'project');
+    const projectConfigDir = path.join(projectDir, '.opencode');
+    fs.mkdirSync(userConfigPath, { recursive: true });
+    fs.mkdirSync(projectConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userConfigPath, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ disabled_agents: [] }),
+    );
+    fs.writeFileSync(
+      path.join(projectConfigDir, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ image_routing: 'auto' }),
+    );
+
+    const config = loadPluginConfig(projectDir, { silent: true });
+    expect(config.image_routing).toBe('auto');
+    expect(config.disabled_agents).toEqual([]);
+  });
+
+  test('rejects auto image routing when final config disables Observer', () => {
+    const userConfigPath = path.join(userConfigDir, 'opencode');
+    const projectDir = path.join(tempDir, 'project');
+    const projectConfigDir = path.join(projectDir, '.opencode');
+    fs.mkdirSync(userConfigPath, { recursive: true });
+    fs.mkdirSync(projectConfigDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(userConfigPath, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ image_routing: 'auto' }),
+    );
+    fs.writeFileSync(
+      path.join(projectConfigDir, 'oh-my-opencode-slim.json'),
+      JSON.stringify({ disabled_agents: ['observer'] }),
+    );
+
+    expect(loadPluginConfig(projectDir, { silent: true })).toEqual({});
+  });
+
   test('ignores invalid config (schema violation or malformed JSON)', () => {
     const projectDir = path.join(tempDir, 'project');
     const projectConfigDir = path.join(projectDir, '.opencode');

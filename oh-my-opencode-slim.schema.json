@@ -195,7 +195,16 @@
         "type": "string"
       }
     },
+    "image_routing": {
+      "description": "How image attachments are handled. When omitted, preserves legacy conditional behavior: intercept attachments only when observer is enabled. \"auto\": requires observer to be enabled and saves attachments to disk before nudging delegation to @observer. \"direct\": always passes attachments to the orchestrator untouched.",
+      "type": "string",
+      "enum": [
+        "auto",
+        "direct"
+      ]
+    },
     "disabled_mcps": {
+      "description": "MCP server names to disable completely. Disabled servers are not started and cannot be used by agents.",
       "type": "array",
       "items": {
         "type": "string"

@@ -94,3 +94,14 @@ export const DEFAULT_DISABLED_AGENTS: string[] = ['observer'];
 export const DEFAULT_MAX_SESSIONS_PER_AGENT = 2;
 export const DEFAULT_READ_CONTEXT_MIN_LINES = 10;
 export const DEFAULT_READ_CONTEXT_MAX_FILES = 8;
+
+export type ImageRouting = 'auto' | 'direct';
+
+/** Default image routing mode, preserving Observer's existing behavior. */
+export const DEFAULT_IMAGE_ROUTING: ImageRouting = 'auto';
+
+export function resolveImageRouting(
+  imageRouting: ImageRouting | undefined,
+): ImageRouting {
+  return imageRouting ?? DEFAULT_IMAGE_ROUTING;
+}
