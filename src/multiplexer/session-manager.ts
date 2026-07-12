@@ -9,6 +9,11 @@ import {
 import type { BackgroundJobState } from '../utils/background-job-board';
 import type { BackgroundJobStore } from '../utils/background-job-store';
 import { log } from '../utils/logger';
+import {
+  CmuxSessionLifecycle,
+  type CmuxSessionLifecycleOptions,
+} from './cmux/session-lifecycle';
+import { CmuxSessionStore } from './cmux/session-state';
 
 type BackgroundJobReader = Pick<
   BackgroundJobStore,
@@ -45,7 +50,9 @@ interface SessionEvent {
       parentID?: string;
       title?: string;
       directory?: string;
+      sessionID?: string;
     };
+    part?: { sessionID?: string };
     sessionID?: string;
     status?: { type: string };
   };
@@ -78,6 +85,53 @@ export function resetMultiplexerSessionManagerState(): void {
   state.knownSessions.clear();
   state.spawningSessions.clear();
   state.closingSessions.clear();
+  new CmuxSessionStore().resetForTests();
+}
+
+export type MultiplexerSessionManagerOptions = CmuxSessionLifecycleOptions;
+
+function validServerUrl(value: unknown): string | null {
+  if (typeof value !== 'string' && !(value instanceof URL)) return null;
+  try {
+    const url = new URL(value.toString());
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function clientBaseUrl(client: unknown): string | null {
+  try {
+    if (!client || typeof client !== 'object' || !('_client' in client))
+      return null;
+    const internal = client._client;
+    if (!internal || typeof internal !== 'object' || !('getConfig' in internal))
+      return null;
+    const getConfig = internal.getConfig;
+    if (typeof getConfig !== 'function') return null;
+    const config: unknown = getConfig.call(internal);
+    if (!config || typeof config !== 'object' || !('baseUrl' in config))
+      return null;
+    return validServerUrl(config.baseUrl);
+  } catch {
+    return null;
+  }
+}
+
+function createServerUrlResolver(ctx: PluginInput): () => string | null {
+  return () => {
+    try {
+      const serverUrl = validServerUrl(ctx.serverUrl);
+      if (serverUrl) return serverUrl;
+    } catch {}
+    try {
+      return clientBaseUrl(ctx.client);
+    } catch {
+      return null;
+    }
+  };
 }
 
 /**
@@ -88,7 +142,7 @@ export function resetMultiplexerSessionManagerState(): void {
  */
 export class MultiplexerSessionManager {
   private instanceId = Math.random().toString(36).slice(2, 8);
-  private serverUrl: string;
+  private readonly resolveServerUrl: () => string | null;
   private directory: string;
   private multiplexer: Multiplexer | null = null;
   private sessions: SharedSessionState['sessions'];
@@ -97,11 +151,13 @@ export class MultiplexerSessionManager {
   private closingSessions: SharedSessionState['closingSessions'];
   private pollInterval?: ReturnType<typeof setInterval>;
   private enabled = false;
+  private cmuxLifecycle?: CmuxSessionLifecycle;
 
   constructor(
     ctx: PluginInput,
     config: MultiplexerConfig,
     private readonly backgroundJobBoard?: BackgroundJobReader,
+    options: MultiplexerSessionManagerOptions = {},
   ) {
     const sharedState = getSharedState();
     this.sessions = sharedState.sessions;
@@ -110,27 +166,36 @@ export class MultiplexerSessionManager {
     this.closingSessions = sharedState.closingSessions;
 
     this.directory = ctx.directory;
-    const defaultPort = process.env.OPENCODE_PORT ?? '4096';
-    this.serverUrl =
-      ctx.serverUrl?.toString() ?? `http://localhost:${defaultPort}`;
+    this.resolveServerUrl = createServerUrlResolver(ctx);
 
     this.multiplexer = getMultiplexer(config);
     this.enabled =
       config.type !== 'none' &&
       this.multiplexer !== null &&
       this.multiplexer.isInsideSession();
+    if (this.enabled && this.multiplexer?.type === 'cmux') {
+      this.cmuxLifecycle = new CmuxSessionLifecycle(
+        this.instanceId,
+        this.multiplexer,
+        this.resolveServerUrl,
+        this.directory,
+        this.backgroundJobBoard,
+        options,
+      );
+    }
 
     log('[multiplexer-session-manager] initialized', {
       instanceId: this.instanceId,
       enabled: this.enabled,
       type: config.type,
-      serverUrl: this.serverUrl,
+      serverUrl: 'dynamic',
       trackedSessions: this.sessions.size,
       knownSessions: this.knownSessions.size,
     });
   }
 
   async onSessionCreated(event: SessionEvent): Promise<void> {
+    if (this.cmuxLifecycle) return this.cmuxLifecycle.onSessionCreated(event);
     if (!this.enabled || !this.multiplexer) return;
     if (event.type !== 'session.created') return;
 
@@ -166,11 +231,22 @@ export class MultiplexerSessionManager {
     this.spawningSessions.add(sessionId);
 
     try {
-      const serverRunning = await isServerRunning(this.serverUrl);
+      const serverUrl = this.resolveServerUrl();
+      if (!serverUrl) {
+        log(
+          '[multiplexer-session-manager] no valid server URL, skipping spawn',
+          {
+            instanceId: this.instanceId,
+            sessionId,
+          },
+        );
+        return;
+      }
+      const serverRunning = await isServerRunning(serverUrl);
       if (!serverRunning) {
         log('[multiplexer-session-manager] server not running, skipping', {
           instanceId: this.instanceId,
-          serverUrl: this.serverUrl,
+          serverUrl,
         });
         return;
       }
@@ -190,7 +266,7 @@ export class MultiplexerSessionManager {
       );
 
       const paneResult = await this.multiplexer
-        .spawnPane(sessionId, title, this.serverUrl, directory)
+        .spawnPane(sessionId, title, serverUrl, directory)
         .catch((err) => {
           log('[multiplexer-session-manager] failed to spawn pane', {
             instanceId: this.instanceId,
@@ -241,6 +317,7 @@ export class MultiplexerSessionManager {
   }
 
   async onSessionStatus(event: SessionEvent): Promise<void> {
+    if (this.cmuxLifecycle) return this.cmuxLifecycle.onSessionStatus(event);
     if (!this.enabled) return;
 
     if (event.type === 'session.idle') {
@@ -299,6 +376,7 @@ export class MultiplexerSessionManager {
   }
 
   async onSessionDeleted(event: SessionEvent): Promise<void> {
+    if (this.cmuxLifecycle) return this.cmuxLifecycle.onSessionDeleted(event);
     if (!this.enabled) return;
     if (event.type !== 'session.deleted') return;
 
@@ -340,6 +418,7 @@ export class MultiplexerSessionManager {
   }
 
   private async pollSessions(): Promise<void> {
+    if (this.cmuxLifecycle) return this.cmuxLifecycle.pollOnce();
     if (this.sessions.size === 0) {
       this.stopPolling();
       return;
@@ -383,7 +462,14 @@ export class MultiplexerSessionManager {
   private async fetchSessionStatuses(): Promise<
     Record<string, { type: string }>
   > {
-    const url = new URL('/session/status', this.serverUrl);
+    const serverUrl = this.resolveServerUrl();
+    if (!serverUrl) {
+      log('[multiplexer-session-manager] no valid server URL, skipping poll', {
+        instanceId: this.instanceId,
+      });
+      return {};
+    }
+    const url = new URL('/session/status', serverUrl);
     const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
 
     if (!response.ok) {
@@ -515,13 +601,24 @@ export class MultiplexerSessionManager {
     this.spawningSessions.add(sessionId);
 
     try {
-      const serverRunning = await isServerRunning(this.serverUrl);
+      const serverUrl = this.resolveServerUrl();
+      if (!serverUrl) {
+        log(
+          '[multiplexer-session-manager] no valid server URL, skipping respawn',
+          {
+            instanceId: this.instanceId,
+            sessionId,
+          },
+        );
+        return;
+      }
+      const serverRunning = await isServerRunning(serverUrl);
       if (!serverRunning) {
         log(
           '[multiplexer-session-manager] server not running, skipping busy respawn',
           {
             instanceId: this.instanceId,
-            serverUrl: this.serverUrl,
+            serverUrl,
             sessionId,
           },
         );
@@ -543,7 +640,7 @@ export class MultiplexerSessionManager {
       );
 
       const paneResult = await this.multiplexer
-        .spawnPane(sessionId, known.title, this.serverUrl, known.directory)
+        .spawnPane(sessionId, known.title, serverUrl, known.directory)
         .catch((err) => {
           log('[multiplexer-session-manager] failed to respawn pane', {
             instanceId: this.instanceId,
@@ -621,6 +718,8 @@ export class MultiplexerSessionManager {
   }
 
   async closeSessionFromCoordinator(sessionId: string): Promise<void> {
+    if (this.cmuxLifecycle)
+      return this.cmuxLifecycle.closeSessionFromCoordinator(sessionId);
     if (!this.enabled) return;
     // Coordinator already vetted lifecycle policy; skip re-check
     // ponytail: theoretical race if new job starts between coordinator's
@@ -629,6 +728,7 @@ export class MultiplexerSessionManager {
   }
 
   async cleanup(): Promise<void> {
+    if (this.cmuxLifecycle) return this.cmuxLifecycle.cleanup();
     this.stopPolling();
 
     if (this.closingSessions.size > 0) {
@@ -659,6 +759,10 @@ export class MultiplexerSessionManager {
     // Note: coordinator has same lifetime as plugin, so no explicit cleanup needed
 
     log('[multiplexer-session-manager] cleanup complete');
+  }
+
+  async cleanupOnInstanceDisposed(): Promise<void> {
+    if (this.cmuxLifecycle) await this.cmuxLifecycle.cleanup();
   }
 }
 
