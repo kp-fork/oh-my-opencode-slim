@@ -1,13 +1,18 @@
 ---
 name: deepwork
-description: Orchestrator-only workflow designed for intensive coding sessions, complex multi-phase implementations, and high-risk refactors. Ideal when the task requires structured planning, clear review gates, progressive checkpoints, and persistent state tracking. Note, This is a high-cost operation. When in doubt, always ask the user for confirmation before starting Deepwork mode.
+description: High-cost orchestrator workflow for large, high-risk, multi-phase coding efforts with meaningful dependencies and review gates. Do not activate for routine multi-file changes.
 ---
 
 # Deepwork
 
-Deepwork is an orchestrator workflow for heavy coding sessions. Use it when the
-work is broad, risky, multi-file, or likely to span several implementation
-phases. Do not use it for trivial edits, quick docs changes, or simple bug fixes.
+Deepwork is an orchestrator workflow for heavy coding sessions. Use it only
+when the work is clearly large or high-risk: multiple dependent phases,
+cross-cutting architectural change, unsafe-to-partially-ship migration, or
+sustained coordination across several specialist lanes.
+
+Do not infer Deepwork merely because a task touches multiple files. Do not use
+it for trivial edits, quick docs changes, simple bug fixes, or routine bounded
+features.
 
 ## Core Contract
 
