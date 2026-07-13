@@ -466,9 +466,6 @@ describe('ZellijMultiplexer', () => {
           ]),
         );
       }
-      if (command.includes('list-panes')) {
-        return createSpawnResult(0, 'PANE ID\nterminal_7\n');
-      }
       if (command.includes('new-pane')) {
         return createSpawnResult(0, 'terminal_8\n');
       }
@@ -521,9 +518,6 @@ describe('ZellijMultiplexer', () => {
             { id: 4, is_plugin: false, tab_id: 1 },
           ]),
         );
-      }
-      if (command.includes('list-panes')) {
-        return createSpawnResult(0, 'PANE ID\nterminal_7\n');
       }
       if (command.includes('new-pane')) {
         return createSpawnResult(0, 'terminal_8\n');

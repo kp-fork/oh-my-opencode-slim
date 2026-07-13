@@ -115,6 +115,8 @@ export class ZellijMultiplexer implements Multiplexer {
           this.firstPaneUsed = true;
           return { success: true, paneId: this.firstPaneId };
         }
+        // Reuse failed — don't keep retrying a known-bad pane
+        this.firstPaneUsed = true;
         // fall through to createPaneInAgentTab on failure
       }
 
