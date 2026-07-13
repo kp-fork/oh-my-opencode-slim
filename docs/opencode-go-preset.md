@@ -6,9 +6,10 @@ default OpenAI setup.
 The installer builds both `openai` and `opencode-go`. OpenAI stays active unless
 you choose OpenCode Go at install time or switch to it later.
 
-Because the `opencode-go` preset uses GLM-5.1 for Orchestrator and GLM is not
-multimodal, installing with `--preset=opencode-go` also enables the Observer
-agent and configures it with `opencode-go/kimi-k2.6` for visual analysis.
+Because the `opencode-go` Orchestrator model (`minimax-m3`) is not multimodal,
+installing with `--preset=opencode-go` also enables the Observer agent and
+configures it with `opencode-go/mimo-v2.5` (a native omnimodal model) for
+visual analysis.
 
 ## Install with OpenCode Go Active
 
@@ -47,13 +48,13 @@ role:
 
 | Agent | Model |
 |-------|-------|
-| Orchestrator | `opencode-go/glm-5.2` |
+| Orchestrator | `opencode-go/minimax-m3` (`max`) |
 | Oracle | `opencode-go/qwen3.7-max` (`max`) |
-| Librarian | `opencode-go/deepseek-v4-flash` |
-| Explorer | `opencode-go/deepseek-v4-flash` |
+| Librarian | `opencode-go/deepseek-v4-flash` (`high`) + MCPs |
+| Explorer | `opencode-go/deepseek-v4-flash` (`max`) |
 | Designer | `opencode-go/kimi-k2.7-code` (`medium`) |
 | Fixer | `opencode-go/deepseek-v4-flash` (`high`) |
-| Observer | `opencode-go/kimi-k2.6` |
+| Observer | `opencode-go/mimo-v2.5` (`max`) |
 
 ## Generated Config Shape
 
@@ -67,17 +68,21 @@ setting the top-level `preset` field:
   "presets": {
     "opencode-go": {
       "orchestrator": {
-        "model": "opencode-go/glm-5.2"
+        "model": "opencode-go/minimax-m3",
+        "variant": "max"
       },
       "oracle": {
         "model": "opencode-go/qwen3.7-max",
         "variant": "max"
       },
       "librarian": {
-        "model": "opencode-go/deepseek-v4-flash"
+        "model": "opencode-go/deepseek-v4-flash",
+        "variant": "high",
+        "mcps": ["websearch", "context7", "gh_grep"]
       },
       "explorer": {
-        "model": "opencode-go/deepseek-v4-flash"
+        "model": "opencode-go/deepseek-v4-flash",
+        "variant": "max"
       },
       "designer": {
         "model": "opencode-go/kimi-k2.7-code",
@@ -88,7 +93,8 @@ setting the top-level `preset` field:
         "variant": "high"
       },
       "observer": {
-        "model": "opencode-go/kimi-k2.6"
+        "model": "opencode-go/mimo-v2.5",
+        "variant": "max"
       }
     }
   }
@@ -97,7 +103,7 @@ setting the top-level `preset` field:
 
 ## Skill Reference
 
-This preset defines no per-agent `skills` or `mcps`. All agents use whatever skills are globally installed (the `*` wildcard).
+This preset defines per-agent `skills` and `mcps` via `generateLiteConfig`. The generated config includes `skills: ["*"]` for Orchestrator and agent-specific MCP lists (e.g., Librarian gets `websearch`, `context7`, `gh_grep`).
 
 | Skill | Description | Source |
 | --- | --- | --- |

@@ -457,11 +457,13 @@ describe('config-io', () => {
     expect(saved.disabled_agents).toEqual([]);
     expect(saved.presets.openai).toBeDefined();
     expect(saved.presets['opencode-go'].orchestrator.model).toBe(
-      'opencode-go/glm-5.2',
+      'opencode-go/minimax-m3',
     );
+    expect(saved.presets['opencode-go'].orchestrator.variant).toBe('max');
     expect(saved.presets['opencode-go'].observer.model).toBe(
-      'opencode-go/kimi-k2.6',
+      'opencode-go/mimo-v2.5',
     );
+    expect(saved.presets['opencode-go'].observer.variant).toBe('max');
   });
 
   test('disableDefaultAgents disables conflicting OpenCode built-in agents', () => {
