@@ -8,6 +8,7 @@ function activationPrompt(task: string): string {
     'Use the deepwork skill for this task. Treat it as a heavy coding session.',
     '',
     'Deepwork requirements:',
+    '- before planning, delegation, or creating state, inspect existing `.gitignore` and `.ignore`; add only missing entries without duplicates: `.gitignore` must contain `.slim/deepwork/`, and `.ignore` must contain `!.slim/deepwork/` and `!.slim/deepwork/**`; this keeps state git-local yet OpenCode-readable;',
     '- create/update a `.slim/deepwork/` progress file;',
     '- keep OpenCode todos synced with the current phase;',
     '- draft a plan and get `@oracle` review before implementation;',

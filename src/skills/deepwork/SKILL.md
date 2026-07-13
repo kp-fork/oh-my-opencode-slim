@@ -16,6 +16,10 @@ not as the default implementation worker.
 
 Required behavior:
 
+- before planning, delegation, or creating a deepwork state file, inspect the
+  existing `.gitignore` and `.ignore`; add only missing entries, without
+  duplicates, so `.gitignore` contains `.slim/deepwork/` and `.ignore` contains
+  `!.slim/deepwork/` and `!.slim/deepwork/**`;
 - keep OpenCode todos aligned with the active deepwork phase;
 - create and maintain a local markdown progress file under `.slim/deepwork/`;
 - write valuable research findings into that file as confirmed research context
@@ -65,8 +69,8 @@ Create a task-specific file such as:
 .slim/deepwork/<short-task-slug>.md
 ```
 
-Keep `.slim/deepwork/` out of git, but make it readable to OpenCode. Ensure the
-project ignore files include:
+Before creating this file—and before planning or delegation—inspect the existing
+`.gitignore` and `.ignore`. Add only missing entries and do not add duplicates:
 
 ```gitignore
 # .gitignore
@@ -78,6 +82,8 @@ project ignore files include:
 !.slim/deepwork/
 !.slim/deepwork/**
 ```
+
+These rules keep deepwork state git-local while allowing OpenCode to read it.
 
 Do not follow a rigid template. Choose whatever markdown structure best fits the
 work. The file only needs to remain useful as persistent session state and should

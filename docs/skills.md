@@ -106,11 +106,16 @@ Start it directly with:
 ```
 
 **How it works:**
-1. Orchestrator creates a session artifact at `.slim/deepwork/<task>.md`
-2. Draft plan → Oracle review → Revise until acceptable
-3. Create phased implementation plan → Oracle review
-4. Execute phase by phase with validation
-5. After each phase: validate → Oracle review → fix issues → continue
+1. Before planning, delegation, or state creation, inspect `.gitignore` and
+   `.ignore`; add only missing entries (without duplicates) for
+   `.slim/deepwork/` in `.gitignore` and `!.slim/deepwork/` plus
+   `!.slim/deepwork/**` in `.ignore`. This keeps state git-local while making it
+   readable to OpenCode.
+2. Orchestrator creates a session artifact at `.slim/deepwork/<task>.md`
+3. Draft plan → Oracle review → Revise until acceptable
+4. Create phased implementation plan → Oracle review
+5. Execute phase by phase with validation
+6. After each phase: validate → Oracle review → fix issues → continue
 
 **Key features:**
 - Persistent session state in markdown files
