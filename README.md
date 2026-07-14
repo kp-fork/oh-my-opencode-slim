@@ -571,21 +571,16 @@ servers), a skill runs no process — it is a focused playbook an agent activate
 when the task calls for it. The installer bundles eight skills and keeps them
 updated on plugin auto-update; local customizations are preserved.
 
-| Skill | Purpose | Default agent | How to invoke | Source |
-|-------|---------|---------------|---------------|--------|
-| `codemap` | Hierarchical repository maps so agents understand codebases without re-reading everything | `orchestrator` | `run codemap` | [SKILL.md](src/skills/codemap/SKILL.md) |
-| `deepwork` | Structured workflow for large, risky, multi-phase coding sessions with review gates | `orchestrator` | `/deepwork <task>` | [SKILL.md](src/skills/deepwork/SKILL.md) |
-| `verification-planning` | Plans a project-specific evidence path before non-trivial changes | `orchestrator` | automatic before non-trivial work | [SKILL.md](src/skills/verification-planning/SKILL.md) |
-| `simplify` | Behavior-preserving simplification for readability and maintainability | `oracle` | ask for simplification or during review | [SKILL.md](src/skills/simplify/SKILL.md) |
-| `worktrees` | Git worktrees as safe, isolated coding lanes for risky or parallel work | `orchestrator` | `work in a worktree` | [SKILL.md](src/skills/worktrees/SKILL.md) |
-| `clonedeps` | Clones dependency source locally so agents can inspect library internals | `orchestrator` | `clone dependencies` | [SKILL.md](src/skills/clonedeps/SKILL.md) |
-| `reflect` | Turns repeated workflow friction into reusable skills, agents, or config | `orchestrator` | `/reflect` | [SKILL.md](src/skills/reflect/SKILL.md) |
-| `oh-my-opencode-slim` | Configures and safely improves the plugin setup itself | `orchestrator` | ask to tune your setup | [SKILL.md](src/skills/oh-my-opencode-slim/SKILL.md) |
-
-<div align="center">
-  <img src="img/oh-my-opencode-skill.png" alt="oh-my-opencode-slim skill in use" width="600">
-  <p><i>Ask the bundled skill to tune and improve your agent setup.</i></p>
-</div>
+| Skill | Purpose | Default agent | How to invoke |
+|:-----:|---------|---------------|---------------|
+| <img src="img/skills/codemap.webp" width="120" alt="Codemap artifact"><br>[`codemap`](src/skills/codemap/SKILL.md) | Hierarchical repository maps so agents understand codebases without re-reading everything | `orchestrator` | `run codemap` |
+| <img src="img/skills/deepwork.webp" width="120" alt="Deepwork artifact"><br>[`deepwork`](src/skills/deepwork/SKILL.md) | Structured workflow for large, risky, multi-phase coding sessions with review gates | `orchestrator` | `/deepwork <task>` |
+| <img src="img/skills/verification-planning.webp" width="120" alt="Verification Planning artifact"><br>[`verification-planning`](src/skills/verification-planning/SKILL.md) | Plans a project-specific evidence path before non-trivial changes | `orchestrator` | automatic before non-trivial work |
+| <img src="img/skills/simplify.webp" width="120" alt="Simplify artifact"><br>[`simplify`](src/skills/simplify/SKILL.md) | Behavior-preserving simplification for readability and maintainability | `oracle` | ask for simplification or during review |
+| <img src="img/skills/worktrees.webp" width="120" alt="Worktrees artifact"><br>[`worktrees`](src/skills/worktrees/SKILL.md) | Git worktrees as safe, isolated coding lanes for risky or parallel work | `orchestrator` | `work in a worktree` |
+| <img src="img/skills/clonedeps.webp" width="120" alt="Clonedeps artifact"><br>[`clonedeps`](src/skills/clonedeps/SKILL.md) | Clones dependency source locally so agents can inspect library internals | `orchestrator` | `clone dependencies` |
+| <img src="img/skills/reflect.webp" width="120" alt="Reflect artifact"><br>[`reflect`](src/skills/reflect/SKILL.md) | Turns repeated workflow friction into reusable skills, agents, or config | `orchestrator` | `/reflect` |
+| <img src="img/skills/oh-my-opencode-slim.webp" width="120" alt="oh-my-opencode-slim artifact"><br>[`oh-my-opencode-slim`](src/skills/oh-my-opencode-slim/SKILL.md) | Configures and safely improves the plugin setup itself | `orchestrator` | ask to tune your setup |
 
 Skill assignments are permission grants — an agent can only activate skills it
 has been given. Configure them per agent with the `skills` array in
