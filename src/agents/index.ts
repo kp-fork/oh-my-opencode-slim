@@ -296,6 +296,10 @@ function applyDefaultPermissions(
 
   // Respect explicit deny on question (councillor)
   const questionPerm = existing.question === 'deny' ? 'deny' : 'allow';
+  // Councillors are denied council_session so they cannot spawn nested
+  // councils — this permission denial is now the recursion guard (the
+  // plugin's SubagentDepthTracker was removed; OpenCode's native
+  // subagent_depth covers TaskTool-based recursion for other subagents).
   const councilSessionPerm = COUNCIL_TOOL_ALLOWED_AGENTS.has(agent.name)
     ? (existing.council_session ?? 'allow')
     : 'deny';

@@ -67,7 +67,6 @@ import {
 } from './utils';
 import { isPluginDisabledByEnv } from './utils/env';
 import { initLogger, log } from './utils/logger';
-import { SubagentDepthTracker } from './utils/subagent-depth';
 import { collapseSystemInPlace } from './utils/system-collapse';
 
 /**
@@ -143,7 +142,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let runtimeChains: Record<string, string[]>;
   let multiplexerConfig: MultiplexerConfig;
   let multiplexerEnabled: boolean;
-  let depthTracker: SubagentDepthTracker;
   let multiplexerSessionManager: MultiplexerSessionManager;
   let autoUpdateChecker: ReturnType<typeof createAutoUpdateCheckerHook>;
   let sessionAgentMap: Map<string, string>;
@@ -252,13 +250,11 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       startAvailabilityCheck(multiplexerConfig);
     }
 
-    depthTracker = new SubagentDepthTracker();
-
     // Initialize council tools (only when council is configured)
     councilTools = config.council
       ? createCouncilTool(
           ctx,
-          new CouncilManager(ctx, config, depthTracker, multiplexerEnabled),
+          new CouncilManager(ctx, config, multiplexerEnabled),
         )
       : {};
 
@@ -927,11 +923,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       }
 
       if (event.type === 'session.created') {
-        const childSessionId = event.properties?.info?.id;
-        const parentSessionId = event.properties?.info?.parentID;
-        if (depthTracker && childSessionId && parentSessionId) {
-          depthTracker.registerChild(parentSessionId, childSessionId);
-        }
         const createdSessionId = event.properties?.info?.id;
         const createdSessionDir = event.properties?.info?.directory;
         if (createdSessionId && createdSessionDir) {
@@ -1011,9 +1002,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           sessionLifecycle.dispatchSessionDeleted(sessionID);
         }
         companionManager.onSessionDeleted(sessionID);
-        if (depthTracker && sessionID) {
-          depthTracker.cleanup(sessionID);
-        }
         if (sessionID) {
           sessionAgentMap.delete(sessionID);
           sessionDirectories.delete(sessionID);

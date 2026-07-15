@@ -25,7 +25,6 @@ import {
   promptWithTimeout,
   shortModelLabel,
 } from '../utils/session';
-import type { SubagentDepthTracker } from '../utils/subagent-depth';
 
 type OpencodeClient = PluginInput['client'];
 
@@ -37,23 +36,16 @@ export class CouncilManager {
   private client: OpencodeClient;
   private directory: string;
   private config?: PluginConfig;
-  private depthTracker?: SubagentDepthTracker;
   private tmuxEnabled: boolean;
   private deprecatedFields?: string[];
   private legacyMasterModel?: string;
 
-  constructor(
-    ctx: PluginInput,
-    config?: PluginConfig,
-    depthTracker?: SubagentDepthTracker,
-    tmuxEnabled = false,
-  ) {
+  constructor(ctx: PluginInput, config?: PluginConfig, tmuxEnabled = false) {
     this.client = ctx.client;
     this.directory = ctx.directory;
     this.config = config;
     this.deprecatedFields = config?.council?._deprecated;
     this.legacyMasterModel = config?.council?._legacyMasterModel;
-    this.depthTracker = depthTracker;
     this.tmuxEnabled = tmuxEnabled;
   }
 
@@ -80,23 +72,6 @@ export class CouncilManager {
     presetName: string | undefined,
     parentSessionId: string,
   ): Promise<CouncilResult> {
-    // Check depth limit before starting councillors
-    if (this.depthTracker) {
-      const parentDepth = this.depthTracker.getDepth(parentSessionId);
-      if (parentDepth + 1 > this.depthTracker.maxDepth) {
-        log('[council-manager] spawn blocked: max depth exceeded', {
-          parentSessionId,
-          parentDepth,
-          maxDepth: this.depthTracker.maxDepth,
-        });
-        return {
-          success: false,
-          error: 'Subagent depth exceeded',
-          councillorResults: [],
-        };
-      }
-    }
-
     const councilConfig = this.config?.council;
     if (!councilConfig) {
       log('[council-manager] Council configuration not found');
@@ -255,16 +230,6 @@ export class CouncilManager {
 
       sessionId = session.data.id;
 
-      if (this.depthTracker) {
-        const registered = this.depthTracker.registerChild(
-          options.parentSessionId,
-          sessionId,
-        );
-        if (!registered) {
-          throw new Error('Subagent depth exceeded');
-        }
-      }
-
       if (this.tmuxEnabled) {
         await new Promise((r) => setTimeout(r, TMUX_SPAWN_DELAY_MS));
       }
@@ -315,9 +280,6 @@ export class CouncilManager {
     } finally {
       if (sessionId) {
         this.client.session.abort({ path: { id: sessionId } }).catch(() => {});
-        if (this.depthTracker) {
-          this.depthTracker.cleanup(sessionId);
-        }
       }
     }
   }
