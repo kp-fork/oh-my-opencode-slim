@@ -483,10 +483,7 @@ export class BackgroundJobBoard implements BackgroundJobStore {
     return errors >= threshold || timeouts >= threshold;
   }
 
-  formatForPrompt(
-    parentSessionID: string,
-    _now?: number,
-  ): string | undefined {
+  formatForPrompt(parentSessionID: string, _now?: number): string | undefined {
     const active = this.list(parentSessionID).filter(
       (job) => job.state === 'running' || job.terminalUnreconciled,
     );
@@ -504,9 +501,7 @@ export class BackgroundJobBoard implements BackgroundJobStore {
         'Cancelled or errored sessions are not reusable.',
         '',
         '#### Active / Unreconciled',
-        ...(active.length > 0
-          ? active.map(formatJob)
-          : ['- none']),
+        ...(active.length > 0 ? active.map(formatJob) : ['- none']),
         '',
         '#### Reusable Sessions',
         ...(reusable.length > 0
