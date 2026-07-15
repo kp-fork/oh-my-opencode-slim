@@ -1,7 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test';
 import type { PluginConfig } from '../config';
 import { CouncilConfigSchema } from '../config/council-schema';
-import { SubagentDepthTracker } from '../utils/subagent-depth';
 import { CouncilManager } from './council-manager';
 
 function createMockContext(overrides?: {
@@ -525,29 +524,6 @@ describe('CouncilManager', () => {
       expect(result.error).toContain('Preset "architect" does not exist');
       expect(result.error).toContain('Omit the preset parameter');
       expect(result.error).toContain('default, roled');
-      expect(result.councillorResults).toHaveLength(0);
-    });
-
-    test('returns error when depth exceeded', async () => {
-      const ctx = createMockContext();
-      const config = createTestCouncilConfig();
-      const tracker = new SubagentDepthTracker(3);
-
-      // Simulate depth: root (0) → child1 (1) → child2 (2) → child3 (3)
-      tracker.registerChild('root', 'child1'); // depth 1
-      tracker.registerChild('child1', 'child2'); // depth 2
-      tracker.registerChild('child2', 'child3'); // depth 3 (max)
-
-      const manager = new CouncilManager(ctx, config, tracker);
-
-      const result = await manager.runCouncil(
-        'test prompt',
-        undefined,
-        'child3', // parent at max depth, next spawn would exceed limit
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Subagent depth exceeded');
       expect(result.councillorResults).toHaveLength(0);
     });
 

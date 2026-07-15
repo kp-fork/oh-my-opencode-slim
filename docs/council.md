@@ -468,6 +468,6 @@ Try:
 
 Also verify the configured model IDs exist in your OpenCode environment.
 
-### Subagent depth exceeded
+### Council recursion prevented
 
-Council is meant to be a leaf agent. Avoid recursive council chains.
+Council is meant to be a leaf agent. The councillor agent type has `council_session: 'deny'` permission, so councillors cannot invoke the council tool. OpenCode's native `subagent_depth` limit also prevents runaway delegation. Avoid recursive council chains.
