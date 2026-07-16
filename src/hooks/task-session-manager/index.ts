@@ -3,6 +3,7 @@ import {
   BackgroundJobBoard,
   type BackgroundJobRecord,
   type BackgroundJobStore,
+  createInternalAgentTextPart,
   deriveTaskSessionLabel,
   isInternalInitiatorPart,
   parseTaskIdFromTaskOutput,
@@ -48,8 +49,8 @@ const RAW_SESSION_ID_PATTERN = /^ses_[A-Za-z0-9_-]+$/;
  */
 const IDLE_RECONCILE_DELAY_MS = 2_000;
 
-/** Track idle reconciliation timers to cancel on busy/error/deleted. */
-const idleReconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const CONTINUATION_NUDGE =
+  'Continue coordinating the remaining incomplete todos. Do not finalize while work remains.';
 
 function djb2Hash(str: string): string {
   let hash = 5381;
@@ -109,6 +110,8 @@ export function createTaskSessionManagerHook(
      *  model fallback rather than natural completion. */
     isFallbackInProgress?: (sessionID: string) => boolean;
     coordinator?: SessionLifecycle;
+    /** Test seam only; production always uses the reconciliation delay. */
+    idleReconcileDelayMs?: number;
   },
 ) {
   const backgroundJobBoard =
@@ -125,9 +128,240 @@ export function createTaskSessionManagerHook(
   const processedInjectedCompletions = new Set<string>();
   const processedInjectedCompletionOrder: string[] = [];
   const terminalJobsInjectedByParent = new Map<string, Set<string>>();
+  const idleReconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const continuationSessionTokens = new Map<string, symbol>();
+  const activeContinuationEvaluations = new Map<string, Set<symbol>>();
+  const continuationConsumed = new Set<string>();
+  const idleReconcileDelayMs =
+    options.idleReconcileDelayMs ?? IDLE_RECONCILE_DELAY_MS;
+
+  type SdkResponse = { data?: unknown };
+  type SessionSdk = {
+    todo?: (input: unknown) => Promise<SdkResponse>;
+    children?: (input: unknown) => Promise<SdkResponse>;
+    status?: (input: unknown) => Promise<SdkResponse>;
+    promptAsync?: (input: unknown) => Promise<unknown>;
+  };
+  const sessionSdk = (_ctx.client as unknown as { session?: SessionSdk })
+    .session;
+
+  function getContinuationSessionToken(sessionID: string): symbol {
+    const existing = continuationSessionTokens.get(sessionID);
+    if (existing) return existing;
+
+    const token = Symbol(sessionID);
+    continuationSessionTokens.set(sessionID, token);
+    return token;
+  }
+
+  function isCurrentContinuation(
+    sessionID: string,
+    sessionToken: symbol,
+    evaluationToken?: symbol,
+  ): boolean {
+    return (
+      continuationSessionTokens.get(sessionID) === sessionToken &&
+      (evaluationToken === undefined ||
+        activeContinuationEvaluations.get(sessionID)?.has(evaluationToken) ===
+          true)
+    );
+  }
+
+  function invalidateContinuation(sessionID: string): void {
+    const timer = idleReconcileTimers.get(sessionID);
+    if (timer) {
+      clearTimeout(timer);
+      idleReconcileTimers.delete(sessionID);
+    }
+    continuationSessionTokens.delete(sessionID);
+    activeContinuationEvaluations.delete(sessionID);
+  }
+
+  function clearContinuation(sessionID: string): void {
+    invalidateContinuation(sessionID);
+    continuationConsumed.delete(sessionID);
+  }
+
+  function isActiveStatus(
+    status: Record<string, unknown>,
+    sessionID: string,
+  ): boolean {
+    return Object.hasOwn(status, sessionID);
+  }
+
+  async function evaluateContinuation(
+    parentSessionID: string,
+    sessionToken: symbol,
+  ): Promise<void> {
+    const evaluationToken = Symbol(parentSessionID);
+    const activeEvaluations =
+      activeContinuationEvaluations.get(parentSessionID) ?? new Set<symbol>();
+    activeEvaluations.add(evaluationToken);
+    activeContinuationEvaluations.set(parentSessionID, activeEvaluations);
+
+    if (
+      continuationConsumed.has(parentSessionID) ||
+      !isCurrentContinuation(parentSessionID, sessionToken, evaluationToken) ||
+      options.isFallbackInProgress?.(parentSessionID) ||
+      backgroundJobBoard.hasTerminalUnreconciled(parentSessionID) ||
+      !sessionSdk?.todo ||
+      !sessionSdk.children ||
+      !sessionSdk.status ||
+      !sessionSdk.promptAsync
+    ) {
+      activeEvaluations.delete(evaluationToken);
+      if (activeEvaluations.size === 0) {
+        activeContinuationEvaluations.delete(parentSessionID);
+      }
+      return;
+    }
+
+    try {
+      const [todoResponse, childrenResponse, statusResponse] =
+        await Promise.all([
+          sessionSdk.todo({
+            path: { id: parentSessionID },
+            throwOnError: true,
+          }),
+          sessionSdk.children({
+            path: { id: parentSessionID },
+            throwOnError: true,
+          }),
+          sessionSdk.status({ throwOnError: true }),
+        ]);
+      if (
+        !Array.isArray(todoResponse.data) ||
+        !Array.isArray(childrenResponse.data) ||
+        !isObjectRecord(statusResponse.data)
+      ) {
+        return;
+      }
+      const todos = todoResponse.data;
+      const children = childrenResponse.data;
+      const status = statusResponse.data;
+      if (
+        !todos.every(
+          (todo) => isObjectRecord(todo) && typeof todo.status === 'string',
+        ) ||
+        !children.every(
+          (child) => isObjectRecord(child) && typeof child.id === 'string',
+        )
+      ) {
+        return;
+      }
+      if (
+        !todos.some(
+          (todo) => todo.status !== 'completed' && todo.status !== 'cancelled',
+        )
+      ) {
+        return;
+      }
+      const childIDs = children.map((child) => child.id as string);
+      if (
+        isActiveStatus(status, parentSessionID) ||
+        childIDs.some((childID) => isActiveStatus(status, childID))
+      ) {
+        return;
+      }
+
+      // Re-read liveness immediately before queuing work; board state is only
+      // authoritative for terminal results observed by this plugin instance.
+      const [latestChildrenResponse, latestStatusResponse] = await Promise.all([
+        sessionSdk.children({
+          path: { id: parentSessionID },
+          throwOnError: true,
+        }),
+        sessionSdk.status({ throwOnError: true }),
+      ]);
+      if (
+        !Array.isArray(latestChildrenResponse.data) ||
+        !isObjectRecord(latestStatusResponse.data) ||
+        !latestChildrenResponse.data.every(
+          (child) => isObjectRecord(child) && typeof child.id === 'string',
+        ) ||
+        continuationConsumed.has(parentSessionID) ||
+        !isCurrentContinuation(
+          parentSessionID,
+          sessionToken,
+          evaluationToken,
+        ) ||
+        options.isFallbackInProgress?.(parentSessionID) ||
+        backgroundJobBoard.hasTerminalUnreconciled(parentSessionID)
+      ) {
+        return;
+      }
+      const latestChildIDs = latestChildrenResponse.data.map(
+        (child) => child.id as string,
+      );
+      const latestStatus = latestStatusResponse.data;
+      if (
+        isActiveStatus(latestStatus, parentSessionID) ||
+        latestChildIDs.some((childID) => isActiveStatus(latestStatus, childID))
+      ) {
+        return;
+      }
+
+      if (
+        continuationConsumed.has(parentSessionID) ||
+        !isCurrentContinuation(
+          parentSessionID,
+          sessionToken,
+          evaluationToken,
+        ) ||
+        options.isFallbackInProgress?.(parentSessionID) ||
+        backgroundJobBoard.hasTerminalUnreconciled(parentSessionID)
+      ) {
+        return;
+      }
+      continuationConsumed.add(parentSessionID);
+      await sessionSdk.promptAsync({
+        path: { id: parentSessionID },
+        body: { parts: [createInternalAgentTextPart(CONTINUATION_NUDGE)] },
+        throwOnError: true,
+      });
+    } catch (error) {
+      log(
+        '[task-session-manager] continuation nudge suppressed after SDK error',
+        {
+          parentSessionID,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    } finally {
+      const evaluations = activeContinuationEvaluations.get(parentSessionID);
+      evaluations?.delete(evaluationToken);
+      if (evaluations?.size === 0) {
+        activeContinuationEvaluations.delete(parentSessionID);
+      }
+    }
+  }
+
+  function scheduleIdleReconciliation(parentSessionID: string): void {
+    if (
+      idleReconcileTimers.has(parentSessionID) ||
+      options.isFallbackInProgress?.(parentSessionID)
+    ) {
+      return;
+    }
+    const sessionToken = getContinuationSessionToken(parentSessionID);
+    const timer = setTimeout(() => {
+      idleReconcileTimers.delete(parentSessionID);
+      if (!isCurrentContinuation(parentSessionID, sessionToken)) {
+        return;
+      }
+      const hadTerminalUnreconciled =
+        backgroundJobBoard.hasTerminalUnreconciled(parentSessionID);
+      reconcileInjectedTerminalJobs(parentSessionID);
+      if (!hadTerminalUnreconciled) {
+        void evaluateContinuation(parentSessionID, sessionToken);
+      }
+    }, idleReconcileDelayMs).unref?.();
+    idleReconcileTimers.set(parentSessionID, timer);
+  }
 
   if (options.coordinator) {
     options.coordinator.onSessionDeleted((sessionId) => {
+      clearContinuation(sessionId);
       // During a foreground fallback abort/re-prompt cycle, the session
       // is being torn down and immediately recreated with a fallback model.
       // Dropping the job from the board here would make the orchestrator
@@ -338,6 +572,42 @@ export function createTaskSessionManagerHook(
   }
 
   return {
+    observeChatMessage: (input: unknown, output: unknown): void => {
+      const inputMessage = isObjectRecord(input) ? input : undefined;
+      const outputRecord = isObjectRecord(output) ? output : undefined;
+      const outputMessage = isObjectRecord(outputRecord?.message)
+        ? outputRecord.message
+        : undefined;
+      const sessionID =
+        typeof outputMessage?.sessionID === 'string'
+          ? outputMessage.sessionID
+          : typeof inputMessage?.sessionID === 'string'
+            ? inputMessage.sessionID
+            : undefined;
+      const parts = Array.isArray(outputRecord?.parts)
+        ? outputRecord.parts
+        : inputMessage?.parts;
+      if (
+        !sessionID ||
+        (typeof outputMessage?.role === 'string' &&
+          outputMessage.role !== 'user') ||
+        !options.shouldManageSession(sessionID) ||
+        !Array.isArray(parts) ||
+        !parts.some(
+          (part) =>
+            isObjectRecord(part) &&
+            part.type === 'text' &&
+            typeof part.text === 'string' &&
+            part.synthetic !== true &&
+            !isInternalInitiatorPart(part),
+        )
+      ) {
+        return;
+      }
+      invalidateContinuation(sessionID);
+      continuationConsumed.delete(sessionID);
+    },
+
     'tool.execute.before': async (
       input: { tool: string; sessionID?: string; callID?: string },
       output: { args?: unknown },
@@ -693,6 +963,19 @@ export function createTaskSessionManagerHook(
         return;
       }
 
+      if (input.event.type === 'server.instance.disposed') {
+        const continuationSessionIDs = new Set([
+          ...idleReconcileTimers.keys(),
+          ...continuationSessionTokens.keys(),
+          ...activeContinuationEvaluations.keys(),
+          ...continuationConsumed,
+        ]);
+        for (const sessionID of continuationSessionIDs) {
+          clearContinuation(sessionID);
+        }
+        return;
+      }
+
       if (
         input.event.type === 'session.idle' ||
         (input.event.type === 'session.status' &&
@@ -713,11 +996,7 @@ export function createTaskSessionManagerHook(
           runningJobForSession: job?.state === 'running' || false,
         });
         if (sessionId && options.shouldManageSession(sessionId)) {
-          const timer = setTimeout(() => {
-            idleReconcileTimers.delete(sessionId);
-            reconcileInjectedTerminalJobs(sessionId);
-          }, IDLE_RECONCILE_DELAY_MS).unref?.();
-          idleReconcileTimers.set(sessionId, timer);
+          scheduleIdleReconciliation(sessionId);
         }
 
         // Fallback: for background child sessions that go idle without
@@ -757,13 +1036,7 @@ export function createTaskSessionManagerHook(
       if (input.event.type === 'session.error') {
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
-        if (sessionId) {
-          const timer = idleReconcileTimers.get(sessionId);
-          if (timer) {
-            clearTimeout(timer);
-            idleReconcileTimers.delete(sessionId);
-          }
-        }
+        if (sessionId) invalidateContinuation(sessionId);
         if (sessionId && options.shouldManageSession(sessionId)) {
           // Only clear injected terminal jobs for fatal errors.
           // Rate-limit errors are recovered by ForegroundFallbackManager
@@ -781,19 +1054,15 @@ export function createTaskSessionManagerHook(
         return;
       }
 
-      if (
-        input.event.type === 'session.status' &&
-        (input.event.properties as { status?: { type?: string } } | undefined)
-          ?.status?.type === 'busy'
-      ) {
+      if (input.event.type === 'session.status') {
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
-        if (sessionId) {
-          const timer = idleReconcileTimers.get(sessionId);
-          if (timer) {
-            clearTimeout(timer);
-            idleReconcileTimers.delete(sessionId);
-          }
+        const statusType = (
+          input.event.properties as { status?: { type?: string } } | undefined
+        )?.status?.type;
+        if (sessionId) invalidateContinuation(sessionId);
+        if (statusType !== 'busy') {
+          return;
         }
         const before = sessionId
           ? backgroundJobBoard.get(sessionId)
@@ -831,11 +1100,7 @@ export function createTaskSessionManagerHook(
         input.event.properties?.info?.id || input.event.properties?.sessionID;
       if (!sessionId) return;
 
-      const timer = idleReconcileTimers.get(sessionId);
-      if (timer) {
-        clearTimeout(timer);
-        idleReconcileTimers.delete(sessionId);
-      }
+      clearContinuation(sessionId);
 
       log('[task-session-manager] session.deleted observed', {
         sessionID: sessionId,

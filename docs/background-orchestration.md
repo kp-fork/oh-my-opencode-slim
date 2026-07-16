@@ -311,6 +311,20 @@ rather than "work complete". It tracks running task IDs, exposes recent work in
 the background job board, updates aliases from task results, and keeps
 multiplexer panes attached while the parent orchestrator continues scheduling.
 
+### Incomplete-todo continuation nudge
+
+After an orchestrator session becomes idle, the plugin may send one internal,
+delayed continuation prompt when OpenCode reports incomplete todos. It is
+suppressed when the SDK reports the parent or any direct child as active, when a
+terminal child result has not yet been reconciled, during foreground fallback,
+or whenever SDK data is unavailable or malformed. A real subsequent user
+message rearms the one-shot nudge; internal prompts and todo updates do not.
+
+This is a best-effort runtime check, not a scheduler or persisted state. After a
+plugin restart, the in-memory job board cannot establish prior result
+reconciliation, and the SDK's current session/todo status remains the liveness
+authority.
+
 ---
 
 ## Startup Behavior

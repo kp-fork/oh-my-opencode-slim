@@ -42,6 +42,7 @@ import {
 } from './hooks';
 import { processImageAttachments } from './hooks/image-hook';
 import { isMessageWithParts, type MessageWithParts } from './hooks/types';
+import { handleTaskSessionEvent } from './index-event';
 import { createInterviewManager } from './interview';
 import { createBuiltinMcps } from './mcp';
 import {
@@ -930,19 +931,29 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         }
       }
 
-      // Handle multiplexer pane spawning for OpenCode's Task tool sessions
-      await multiplexerSessionManager.onSessionCreated(event);
+      await handleTaskSessionEvent(
+        input as {
+          event: {
+            type: string;
+            properties?: { info?: { id?: string }; sessionID?: string };
+          };
+        },
+        taskSessionManagerHook.event,
+        async () => {
+          // Handle multiplexer pane spawning for OpenCode's Task tool sessions
+          await multiplexerSessionManager.onSessionCreated(event);
 
-      // Handle session status/idle events for pane cleanup early so child panes
-      // close promptly even if later hooks do additional work on idle.
-      await multiplexerSessionManager.onSessionStatus(event);
+          // Handle session status/idle events for pane cleanup early so child panes
+          // close promptly even if later hooks do additional work on idle.
+          await multiplexerSessionManager.onSessionStatus(event);
 
-      // Handle session.deleted events for pane cleanup
-      await multiplexerSessionManager.onSessionDeleted(event);
-
-      if (event.type === 'server.instance.disposed') {
-        await multiplexerSessionManager.cleanupOnInstanceDisposed();
-      }
+          // Handle session.deleted events for pane cleanup
+          await multiplexerSessionManager.onSessionDeleted(event);
+        },
+        async () => {
+          await multiplexerSessionManager.cleanupOnInstanceDisposed();
+        },
+      );
 
       // Runtime model fallback for foreground agents (rate-limit detection)
       await foregroundFallback.handleEvent(input.event);
@@ -953,15 +964,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       await interviewManager.handleEvent(
         input as {
           event: { type: string; properties?: Record<string, unknown> };
-        },
-      );
-
-      await taskSessionManagerHook.event(
-        input as {
-          event: {
-            type: string;
-            properties?: { info?: { id?: string }; sessionID?: string };
-          };
         },
       );
 
@@ -1069,8 +1071,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     // Track which agent each session uses (needed for serve-mode prompt
     // injection)
     'chat.message': async (
-      input: { sessionID: string; agent?: string },
-      output?: { message?: { agent?: string } },
+      input: { sessionID: string; agent?: string; parts?: unknown[] },
+      output?: {
+        message?: {
+          agent?: string;
+          role?: string;
+          sessionID?: string;
+        };
+        parts?: unknown[];
+      },
     ) => {
       const rawAgent = input.agent ?? output?.message?.agent;
       const agent = rawAgent
@@ -1097,6 +1106,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           status: 'busy',
         });
       }
+      taskSessionManagerHook.observeChatMessage(input, output);
     },
 
     // Inject orchestrator system prompt for serve-mode sessions. In serve
