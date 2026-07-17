@@ -572,22 +572,28 @@ export function createTaskSessionManagerHook(
     terminalJobsInjectedByParent.delete(parentSessionID);
   }
 
+  function isBoardPart(part: MessagePart): boolean {
+    return (
+      part.synthetic === true &&
+      isObjectRecord(part.metadata) &&
+      part.metadata[BACKGROUND_JOB_BOARD_METADATA_KEY] === true
+    );
+  }
+
   async function injectBackgroundJobBoard(
     _input: Record<string, never>,
     output: { messages?: unknown },
   ): Promise<void> {
     const messages = Array.isArray(output.messages) ? output.messages : [];
 
-    for (const message of messages) {
+    // Strip previously injected board content: parts attached to real
+    // messages (legacy placement) and whole synthetic board messages.
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
       if (!isMessageWithParts(message)) continue;
-      message.parts = message.parts.filter(
-        (part) =>
-          !(
-            part.synthetic === true &&
-            isObjectRecord(part.metadata) &&
-            part.metadata[BACKGROUND_JOB_BOARD_METADATA_KEY] === true
-          ),
-      );
+      const hadParts = message.parts.length > 0;
+      message.parts = message.parts.filter((part) => !isBoardPart(part));
+      if (hadParts && message.parts.length === 0) messages.splice(i, 1);
     }
 
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -612,11 +618,25 @@ export function createTaskSessionManagerHook(
       if (!textPart || isInternalInitiatorPart(textPart)) return;
 
       rememberInjectedTerminalJobs(message.info.sessionID);
-      message.parts.push({
-        type: 'text',
-        synthetic: true,
-        text: reminder,
-        metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
+      // Append the board as its own trailing message rather than mutating
+      // an existing user message. In long tool loops the latest user
+      // message becomes deep history; rewriting it on board state changes
+      // would invalidate the provider prompt cache for everything after
+      // it. A trailing message keeps board churn at the end of the
+      // prompt, where it only costs itself.
+      messages.push({
+        info: {
+          ...message.info,
+          id: `${message.info.id}-background-job-board`,
+        },
+        parts: [
+          {
+            type: 'text',
+            synthetic: true,
+            text: reminder,
+            metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
+          },
+        ],
       });
       return;
     }

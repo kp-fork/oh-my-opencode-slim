@@ -75,6 +75,21 @@ function createMessages(sessionID: string, text = 'user message') {
   };
 }
 
+function boardText(messages: { messages: unknown[] }): string | undefined {
+  const last = messages.messages.at(-1) as
+    | {
+        parts?: {
+          text?: string;
+          metadata?: Record<string, unknown>;
+        }[];
+      }
+    | undefined;
+  const part = last?.parts?.[0];
+  return part?.metadata?.[BACKGROUND_JOB_BOARD_METADATA_KEY] === true
+    ? part.text
+    : undefined;
+}
+
 async function transformMessages(
   hook: ReturnType<typeof createTaskSessionManagerHook>,
   messages: { messages: unknown[] },
@@ -128,11 +143,9 @@ describe('task-session-manager hook', () => {
 
     await transformMessages(hook, messages as never);
 
-    expect(messages.messages).toHaveLength(5);
-    expect(messages.messages[4].parts[1].text).toContain(
-      '### Background Job Board',
-    );
-    expect(messages.messages[4].parts[1].text).toContain(
+    expect(messages.messages).toHaveLength(6);
+    expect(boardText(messages)).toContain('### Background Job Board');
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
   });
@@ -178,7 +191,16 @@ describe('task-session-manager hook', () => {
     await hook.injectBackgroundJobBoard({}, messages);
 
     const userMessage = messages.messages[0];
-    const boardPart = userMessage.parts[1] as {
+    expect(userMessage.parts).toHaveLength(1);
+    expect(userMessage.parts[0].text).toBe('do something');
+    const boardMessage = messages.messages.at(-1) as {
+      info: { role?: string; sessionID?: string };
+      parts: { text?: string; synthetic?: boolean }[];
+    };
+    expect(messages.messages).toHaveLength(2);
+    expect(boardMessage.info.role).toBe('user');
+    expect(boardMessage.info.sessionID).toBe('parent-1');
+    const boardPart = boardMessage.parts[0] as {
       text?: string;
       synthetic?: boolean;
     };
@@ -191,7 +213,6 @@ describe('task-session-manager hook', () => {
     expect(boardPart.text).toEndWith('</system-reminder>');
     expect(boardPart.text).toContain('exp-1 / child-1 / explorer / running');
     expect(boardPart.text).toContain('Objective: map scheduler hooks');
-    expect(userMessage.parts[0].text).toBe('do something');
   });
 
   test('does not let user-visible sentinel text suppress board injection', async () => {
@@ -220,13 +241,10 @@ describe('task-session-manager hook', () => {
 
     await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts[1]).toMatchObject({
-      type: 'text',
-      synthetic: true,
-    });
-    expect(messages.messages[0].parts[1].text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
+    expect(messages.messages[0].parts).toHaveLength(1);
     expect(messages.messages[0].parts[0].text).toBe(
       'SENTINEL: background-job-board-v2',
     );
@@ -244,16 +262,16 @@ describe('task-session-manager hook', () => {
     const messages = createMessages('parent-1', 'continue');
 
     await hook.injectBackgroundJobBoard({}, messages);
-    messages.messages[0].parts = JSON.parse(
-      JSON.stringify(messages.messages[0].parts),
-    );
+    messages.messages = JSON.parse(JSON.stringify(messages.messages));
     await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(
-      messages.messages[0].parts.filter((part) =>
+    const boardMessages = messages.messages.filter((message) =>
+      message.parts.some((part) =>
         part.text?.includes('### Background Job Board'),
       ),
-    ).toHaveLength(1);
+    );
+    expect(boardMessages).toHaveLength(1);
+    expect(messages.messages.at(-1)).toBe(boardMessages[0]);
   });
 
   test('strips stale board parts from history before injecting the latest state', async () => {
@@ -288,7 +306,8 @@ describe('task-session-manager hook', () => {
     expect(boardParts).toHaveLength(1);
     expect(boardParts[0].text).toContain('completed, unreconciled');
     expect(messages.messages[0].parts).toHaveLength(1);
-    expect(messages.messages[1].parts.at(-1)).toBe(boardParts[0]);
+    expect(messages.messages.at(-1)?.parts[0]).toBe(boardParts[0]);
+    expect(messages.messages.at(-2)?.parts[0].text).toBe('second turn');
   });
 
   test('strips JSON-persisted board parts from earlier messages', async () => {
@@ -304,7 +323,7 @@ describe('task-session-manager hook', () => {
 
     await hook.injectBackgroundJobBoard({}, messages);
     const persistedBoard = JSON.parse(
-      JSON.stringify(messages.messages[0].parts[1]),
+      JSON.stringify(messages.messages.at(-1)?.parts[0]),
     );
     messages.messages = [
       {
@@ -319,9 +338,9 @@ describe('task-session-manager hook', () => {
 
     await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts).toHaveLength(0);
-    expect(messages.messages[1].parts).toHaveLength(2);
-    expect(messages.messages[1].parts[1].metadata).toEqual({
+    expect(messages.messages).toHaveLength(2);
+    expect(messages.messages[0].parts[0].text).toBe('current turn');
+    expect(messages.messages[1].parts[0].metadata).toEqual({
       [BACKGROUND_JOB_BOARD_METADATA_KEY]: true,
     });
   });
@@ -348,8 +367,8 @@ describe('task-session-manager hook', () => {
 
     await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts).toHaveLength(0);
-    expect(messages.messages[1].parts).toEqual([
+    expect(messages.messages).toHaveLength(1);
+    expect(messages.messages[0].parts).toEqual([
       { type: 'text', text: 'current turn' },
     ]);
   });
@@ -370,20 +389,29 @@ describe('task-session-manager hook', () => {
 
     await phaseReminder['experimental.chat.messages.transform']({}, messages);
     await hook.injectBackgroundJobBoard({}, messages);
-    await phaseReminder['experimental.chat.messages.transform']({}, messages);
-    await hook.injectBackgroundJobBoard({}, messages);
 
-    const parts = messages.messages[0].parts;
+    // Next request: opencode rebuilds the array from storage. Transient
+    // board messages are gone, but parts pushed onto shared message
+    // objects (phase reminder) may linger.
+    const nextRequest = { messages: [messages.messages[0]] };
+    await phaseReminder['experimental.chat.messages.transform'](
+      {},
+      nextRequest,
+    );
+    await hook.injectBackgroundJobBoard({}, nextRequest);
+
+    const parts = nextRequest.messages[0].parts;
     expect(
       parts.filter(
         (part) => part.metadata?.[BACKGROUND_JOB_BOARD_METADATA_KEY] === true,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(parts.at(-1)?.metadata).toEqual({
-      [BACKGROUND_JOB_BOARD_METADATA_KEY]: true,
-    });
-    expect(parts.at(-2)?.metadata).toEqual({
       [PHASE_REMINDER_METADATA_KEY]: true,
+    });
+    expect(nextRequest.messages).toHaveLength(2);
+    expect(nextRequest.messages.at(-1)?.parts[0].metadata).toEqual({
+      [BACKGROUND_JOB_BOARD_METADATA_KEY]: true,
     });
   });
 
@@ -413,13 +441,10 @@ describe('task-session-manager hook', () => {
 
     await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts[1]).toMatchObject({
-      type: 'text',
-      synthetic: true,
-    });
-    expect(messages.messages[0].parts[1].text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
+    expect(messages.messages[0].parts).toHaveLength(1);
     expect(messages.messages[0].parts[0].text).toBe(
       SLIM_INTERNAL_INITIATOR_MARKER,
     );
@@ -509,12 +534,10 @@ describe('task-session-manager hook', () => {
     const messages = createMessages('parent-1', 'continue');
     await transformMessages(hook, messages);
 
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'ora-1 / child-1 / oracle / completed, unreconciled',
     );
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
-      'Result: plan is sound',
-    );
+    expect(boardText(messages)).toContain('Result: plan is sound');
   });
 
   test('keeps task timeout as a running timed-out job', async () => {
@@ -569,7 +592,7 @@ describe('task-session-manager hook', () => {
     const messages = createMessages('parent-1', 'continue');
     await transformMessages(hook, messages);
 
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'fix-1 / child-1 / fixer / running, timed out',
     );
   });
@@ -722,9 +745,7 @@ describe('task-session-manager hook', () => {
 
     const beforeMessages = createMessages('parent-1', 'before busy');
     await transformMessages(hook, beforeMessages);
-    expect(beforeMessages.messages[0].parts.at(-1)?.text).toContain(
-      'running, timed out',
-    );
+    expect(boardText(beforeMessages)).toContain('running, timed out');
 
     await hook.event({
       event: {
@@ -800,7 +821,7 @@ describe('task-session-manager hook', () => {
       terminalUnreconciled: true,
       resultSummary: 'found hook flow',
     });
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / completed, unreconciled',
     );
   });
@@ -1447,7 +1468,7 @@ describe('task-session-manager hook', () => {
 
     const messages = createMessages('parent-1', 'continue');
     await transformMessages(hook, messages);
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'ora-1 / child-1 / oracle / completed, unreconciled',
     );
 
@@ -1468,9 +1489,7 @@ describe('task-session-manager hook', () => {
 
     const nextMessages = createMessages('parent-1', 'continue again');
     await transformMessages(hook, nextMessages);
-    expect(nextMessages.messages[0].parts.at(-1)?.text).toContain(
-      'Reusable Sessions',
-    );
+    expect(boardText(nextMessages)).toContain('Reusable Sessions');
   });
 
   test('does not reopen stale cancelled child job when child session becomes busy', async () => {
@@ -1665,10 +1684,8 @@ describe('task-session-manager hook', () => {
 
     const nextMessages = createMessages('parent-1', 'reuse');
     await transformMessages(hook, nextMessages);
-    expect(nextMessages.messages[0].parts.at(-1)?.text).toContain(
-      '#### Reusable Sessions',
-    );
-    expect(nextMessages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(nextMessages)).toContain('#### Reusable Sessions');
+    expect(boardText(nextMessages)).toContain(
       'exp-1 / child-1 / explorer / completed, reconciled',
     );
     expect(nextMessages.messages[0].parts[0].text).not.toContain(
@@ -1739,7 +1756,7 @@ describe('task-session-manager hook', () => {
 
     const messages = createMessages('parent-1', 'continue');
     await transformMessages(hook, messages);
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'ora-1 / done-1 / oracle / completed, reconciled',
     );
     expect(messages.messages[0].parts[0].text).not.toContain('err-1');
@@ -1884,12 +1901,10 @@ describe('task-session-manager hook', () => {
 
     const messages = createMessages('parent-1', 'continue');
     await transformMessages(hook, messages);
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
-      '#### Reusable Sessions\n- none',
-    );
+    expect(boardText(messages)).toContain('#### Reusable Sessions\n- none');
   });
 
   test('bare task id output without state does not create reusable job', async () => {
@@ -1929,7 +1944,7 @@ describe('task-session-manager hook', () => {
 
     const unreconciled = createMessages('parent-1', 'continue');
     await transformMessages(hook, unreconciled);
-    expect(unreconciled.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(unreconciled)).toContain(
       'fix-1 / ses_child / fixer / completed, unreconciled',
     );
 
@@ -1945,7 +1960,7 @@ describe('task-session-manager hook', () => {
 
     const reusable = createMessages('parent-1', 'reuse');
     await transformMessages(hook, reusable);
-    expect(reusable.messages[0].parts.at(-1)?.text).toContain(
+    expect(boardText(reusable)).toContain(
       'fix-1 / ses_child / fixer / completed, reconciled',
     );
 
@@ -2079,7 +2094,7 @@ describe('task-session-manager hook', () => {
 
     const next = createMessages('parent-1', 'reuse');
     await transformMessages(hook, next);
-    const prompt = next.messages[0].parts.at(-1)?.text;
+    const prompt = boardText(next);
     expect(prompt).not.toContain('small.ts');
     expect(prompt).toContain('src/large.ts (12 lines)');
     expect(prompt).not.toContain('src/large.ts (18 lines)');
@@ -2650,12 +2665,8 @@ describe('task-session-manager hook', () => {
 
     // After recovery: agentMap corrected, board reminders injected
     expect(agentMap.get('orchestrator-1')).toBe('orchestrator');
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
-      '### Background Job Board',
-    );
-    expect(messages.messages[0].parts.at(-1)?.text).toContain(
-      'child-transform-1',
-    );
+    expect(boardText(messages)).toContain('### Background Job Board');
+    expect(boardText(messages)).toContain('child-transform-1');
   });
 
   test('repairs session mapping before composed reminder transforms', async () => {
