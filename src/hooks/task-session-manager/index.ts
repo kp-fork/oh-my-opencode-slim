@@ -1051,7 +1051,7 @@ export function createTaskSessionManagerHook(
             // Record non-retryable errors on the job board so the
             // orchestrator sees the failure instead of a false completion.
             const job = backgroundJobBoard.get(sessionId);
-            if (job) {
+            if (job && job.state === 'running') {
               backgroundJobBoard.updateStatus({
                 taskID: sessionId,
                 state: 'error',
