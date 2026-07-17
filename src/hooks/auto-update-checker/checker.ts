@@ -1,7 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
 import {
   getOpenCodeConfigPaths,
   stripJsonComments,
@@ -59,46 +58,159 @@ function isInstallerManagedEntry(entry: unknown): boolean {
   );
 }
 
-function findManagedSpecifierRanges(content: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  const source = ts.parseJsonText('opencode.jsonc', content);
-  const root = source.statements[0];
-  if (
-    !root ||
-    !ts.isExpressionStatement(root) ||
-    !ts.isObjectLiteralExpression(root.expression)
-  )
-    return ranges;
-  const plugin = root.expression.properties.find(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) &&
-      property.name.getText(source) === '"plugin"',
-  );
-  if (!plugin || !ts.isArrayLiteralExpression(plugin.initializer))
-    return ranges;
-  for (const entry of plugin.initializer.elements) {
-    if (!ts.isArrayLiteralExpression(entry) || entry.elements.length < 2)
-      continue;
-    const [specifier, options] = entry.elements;
+type JsoncToken = {
+  kind: 'string' | 'literal' | 'punctuation';
+  value: string;
+  start: number;
+  end: number;
+};
+
+function tokenizeJsonc(content: string): JsoncToken[] {
+  const tokens: JsoncToken[] = [];
+  for (let index = 0; index < content.length; ) {
+    const char = content[index];
+    if (/\s/.test(char)) index++;
+    else if (content.startsWith('//', index)) {
+      index = content.indexOf('\n', index);
+      if (index === -1) break;
+    } else if (content.startsWith('/*', index)) {
+      index = content.indexOf('*/', index + 2);
+      if (index === -1) break;
+      index += 2;
+    } else if ('[]{}:,'.includes(char)) {
+      tokens.push({
+        kind: 'punctuation',
+        value: char,
+        start: index,
+        end: ++index,
+      });
+    } else if (char === '"') {
+      const start = index++;
+      while (index < content.length) {
+        if (content[index] === '\\') index += 2;
+        else if (content[index++] === '"') break;
+      }
+      const raw = content.slice(start, index);
+      try {
+        tokens.push({
+          kind: 'string',
+          value: JSON.parse(raw) as string,
+          start,
+          end: index,
+        });
+      } catch {
+        return [];
+      }
+    } else {
+      const start = index;
+      while (index < content.length && !/\s|[[\]{}:,]/.test(content[index]))
+        index++;
+      tokens.push({
+        kind: 'literal',
+        value: content.slice(start, index),
+        start,
+        end: index,
+      });
+    }
+  }
+  return tokens;
+}
+
+function matchingToken(
+  tokens: JsoncToken[],
+  start: number,
+  open: string,
+  close: string,
+): number {
+  let depth = 0;
+  for (let index = start; index < tokens.length; index++) {
+    if (tokens[index].kind === 'punctuation' && tokens[index].value === open)
+      depth++;
     if (
-      !specifier ||
-      !options ||
-      !ts.isStringLiteral(specifier) ||
-      !specifier.text.startsWith(`${PACKAGE_NAME}@`) ||
-      !ts.isObjectLiteralExpression(options)
+      tokens[index].kind === 'punctuation' &&
+      tokens[index].value === close &&
+      --depth === 0
+    )
+      return index;
+  }
+  return -1;
+}
+
+function hasDirectInstallerMarker(
+  tokens: JsoncToken[],
+  objectStart: number,
+): boolean {
+  const objectEnd = matchingToken(tokens, objectStart, '{', '}');
+  if (objectEnd === -1) return false;
+  let depth = 1;
+  let markerValue = false;
+  for (let index = objectStart + 1; index < objectEnd; index++) {
+    const value = tokens[index].value;
+    if (tokens[index].kind === 'punctuation' && value === '{') depth++;
+    else if (tokens[index].kind === 'punctuation' && value === '}') depth--;
+    else if (
+      depth === 1 &&
+      tokens[index].kind === 'string' &&
+      value === INSTALLER_MANAGED_PLUGIN_OPTION &&
+      tokens[index + 1]?.kind === 'punctuation' &&
+      tokens[index + 1]?.value === ':' &&
+      tokens[index + 2]
     ) {
+      markerValue =
+        tokens[index + 2].kind === 'literal' &&
+        tokens[index + 2].value === 'true';
+    }
+  }
+  return markerValue;
+}
+
+function findManagedSpecifierRanges(content: string): Array<[number, number]> {
+  const tokens = tokenizeJsonc(content);
+  const rootStart = tokens.findIndex(
+    (token) => token.kind === 'punctuation' && token.value === '{',
+  );
+  if (rootStart === -1) return [];
+  const rootEnd = matchingToken(tokens, rootStart, '{', '}');
+  if (rootEnd === -1) return [];
+  let objectDepth = 1;
+  let plugin = -1;
+  for (let index = rootStart + 1; index < rootEnd; index++) {
+    const value = tokens[index].value;
+    if (tokens[index].kind === 'punctuation' && value === '{') objectDepth++;
+    else if (tokens[index].kind === 'punctuation' && value === '}')
+      objectDepth--;
+    else if (
+      objectDepth === 1 &&
+      value === 'plugin' &&
+      tokens[index + 1]?.kind === 'punctuation' &&
+      tokens[index + 1]?.value === ':' &&
+      tokens[index + 2]?.kind === 'punctuation' &&
+      tokens[index + 2]?.value === '['
+    ) {
+      plugin = index;
+    }
+  }
+  if (plugin === -1) return [];
+  const arrayStart = plugin + 2;
+  const arrayEnd = matchingToken(tokens, arrayStart, '[', ']');
+  if (arrayEnd === -1) return [];
+  const ranges: Array<[number, number]> = [];
+  for (let index = arrayStart + 1; index < arrayEnd; index++) {
+    if (tokens[index].kind !== 'punctuation' || tokens[index].value !== '[')
       continue;
-    }
-    const managed = options.properties.some(
-      (property) =>
-        ts.isPropertyAssignment(property) &&
-        property.name.getText(source).replaceAll('"', '') ===
-          INSTALLER_MANAGED_PLUGIN_OPTION &&
-        property.initializer.kind === ts.SyntaxKind.TrueKeyword,
-    );
-    if (managed) {
-      ranges.push([specifier.getStart(source) + 1, specifier.end - 1]);
-    }
+    const tupleEnd = matchingToken(tokens, index, '[', ']');
+    if (tupleEnd === -1) break;
+    const specifier = tokens[index + 1];
+    if (
+      specifier?.value.startsWith(`${PACKAGE_NAME}@`) &&
+      tokens[index + 2]?.kind === 'punctuation' &&
+      tokens[index + 2]?.value === ',' &&
+      tokens[index + 3]?.kind === 'punctuation' &&
+      tokens[index + 3]?.value === '{' &&
+      hasDirectInstallerMarker(tokens, index + 3)
+    )
+      ranges.push([specifier.start + 1, specifier.end - 1]);
+    index = tupleEnd;
   }
   return ranges;
 }

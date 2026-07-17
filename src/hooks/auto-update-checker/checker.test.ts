@@ -208,8 +208,14 @@ describe('auto-update-checker/checker', () => {
           '/mock/config/opencode.json',
           `{
   // preserve this comment
+  "note": "{ [ ] }",
+  "other": { "plugin": [["oh-my-opencode-slim@0.1.0", { "__ohMyOpencodeSlimManagedByInstaller": true }]] },
+  "plugin": [["oh-my-opencode-slim@0.2.0", { "__ohMyOpencodeSlimManagedByInstaller": true }]],
   "plugin": [
-    [ /* tuple comment */ "oh-my-opencode-slim@1.2.3", { "__ohMyOpencodeSlimManagedByInstaller": true, "keep": "yes" } ],
+    [ /* tuple comment */ "oh-my-opencode-slim@1.2.3", { "__ohMyOpencodeSlimManagedByInstaller": true, "keep": "[{}]" } ],
+    ["oh-my-opencode-slim@1.2.3", { "__ohMyOpencodeSlimManagedByInstaller": false, "__ohMyOpencodeSlimManagedByInstaller": true }],
+    ["oh-my-opencode-slim@1.2.3", { "__ohMyOpencodeSlimManagedByInstaller": "true" }],
+    ["oh-my-opencode-slim\\u00401.2.3", { "__ohMyOpencodeSlimManagedByInstall\\u0065r": true }],
     "oh-my-opencode-slim@1.2.3",
     ["oh-my-opencode-slim@1.2.3", { "nested": { "__ohMyOpencodeSlimManagedByInstaller": true } }]
   ]
@@ -252,7 +258,22 @@ describe('auto-update-checker/checker', () => {
         'oh-my-opencode-slim@1.2.4',
       );
       expect(files.get('/mock/config/opencode.json')).toContain(
-        '"keep": "yes"',
+        '"oh-my-opencode-slim@1.2.4", { "__ohMyOpencodeSlimManagedByInstall\\u0065r": true }',
+      );
+      expect(files.get('/mock/config/opencode.json')).toContain(
+        '"oh-my-opencode-slim@0.1.0", { "__ohMyOpencodeSlimManagedByInstaller": true }',
+      );
+      expect(files.get('/mock/config/opencode.json')).toContain(
+        '"oh-my-opencode-slim@0.2.0", { "__ohMyOpencodeSlimManagedByInstaller": true }',
+      );
+      expect(files.get('/mock/config/opencode.json')).toContain(
+        '"oh-my-opencode-slim@1.2.3", { "__ohMyOpencodeSlimManagedByInstaller": "true" }',
+      );
+      expect(files.get('/mock/config/opencode.json')).toContain(
+        '"keep": "[{}]"',
+      );
+      expect(files.get('/mock/config/opencode.json')).toContain(
+        '"note": "{ [ ] }"',
       );
       expect(files.get('/mock/config/opencode.json')).toContain(
         'oh-my-opencode-slim@1.2.3',
