@@ -421,7 +421,9 @@ async function runInstall(config: InstallConfig): Promise<number> {
     } else {
       try {
         const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
-        const result = syncBundledSkillsFromPackage(packageRoot);
+        const result = syncBundledSkillsFromPackage(packageRoot, {
+          force: config.forceSkillSync,
+        });
         const categorizedSkipped = new Set([
           ...result.staged,
           ...result.adopted,
@@ -547,7 +549,8 @@ async function runInstall(config: InstallConfig): Promise<number> {
 export async function install(args: InstallArgs): Promise<number> {
   const config: InstallConfig = {
     hasTmux: false,
-    installCustomSkills: args.skills === 'yes',
+    installCustomSkills: args.skills === 'yes' || args.skills === 'force',
+    forceSkillSync: args.skills === 'force',
     preset: args.preset,
     promptForStar: args.tui,
     dryRun: args.dryRun,

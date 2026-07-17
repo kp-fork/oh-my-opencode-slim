@@ -63,6 +63,7 @@ interface ManagedSkillSource {
 
 interface SkillSyncOptions {
   skills?: ManagedSkillSource[];
+  force?: boolean;
 }
 
 /**
@@ -737,6 +738,37 @@ export function syncBundledSkillsFromPackage(
         }
 
         const sourceHash = computeDirectoryHash(sourcePath);
+        const entry = manifest.skills[skill.name];
+
+        if (options.force && destExists) {
+          try {
+            atomicReplaceDir(sourcePath, destPath);
+            if (entry?.stagedPath) {
+              removeManagedStagedPath(
+                entry.stagedPath,
+                manifestDir,
+                skill.name,
+              );
+            }
+            installed.push(skill.name);
+            manifest.skills[skill.name] = {
+              status: 'managed',
+              packageVersion,
+              sourceHash,
+              lastManagedHash: sourceHash,
+              lastSeenHash: sourceHash,
+              updatedAt: new Date().toISOString(),
+            };
+            log(`[skill-sync] Force-updated skill: ${skill.name}`);
+          } catch (err) {
+            log(
+              `[skill-sync] Failed to force-update skill ${skill.name}:`,
+              err,
+            );
+            failed.push(skill.name);
+          }
+          continue;
+        }
 
         if (isManifestCorrupt) {
           if (!destExists) {
@@ -817,8 +849,6 @@ export function syncBundledSkillsFromPackage(
           }
           continue;
         }
-
-        const entry = manifest.skills[skill.name];
 
         if (!destExists) {
           if (entry && entry.status === 'deleted') {

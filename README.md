@@ -578,6 +578,11 @@ servers), a skill runs no process — it is a focused playbook an agent activate
 when the task calls for it. The installer bundles eight skills and keeps them
 updated on plugin auto-update; local customizations are preserved.
 
+> [!TIP]
+> To discard local bundled-skill customizations and receive package updates, run
+> `bunx oh-my-opencode-slim install --skills=force`. This deliberately replaces
+> installed bundled skills with the package versions.
+
 | Skill | Purpose | Default agent | How to invoke |
 |:-----:|---------|---------------|---------------|
 | <img src="img/skills/codemap.webp" width="120" alt="Codemap artifact"><br>[`codemap`](src/skills/codemap/SKILL.md) | Hierarchical repository maps so agents understand codebases without re-reading everything | `orchestrator` | `run codemap` |
