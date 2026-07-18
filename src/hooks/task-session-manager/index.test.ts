@@ -2796,6 +2796,358 @@ describe('task-session-manager hook', () => {
     );
   });
 
+  test('does not evaluate or nudge while a question or permission waits', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('cancels a scheduled continuation when an input wait arrives before its timer fires', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const children = mock(async () => ({ data: [] }));
+    const status = mock(async () => ({ data: {} }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: { todo, children, status, promptAsync },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(children).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('fails closed when an id-less ask races a scheduled continuation', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('clears only the resolved input wait and resumes on a later idle', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-2' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'unknown-question' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.replied',
+        properties: { sessionID: 'parent-1', requestID: 'permission-1' },
+      },
+    });
+    await flushContinuation();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.rejected',
+        properties: { sessionID: 'parent-1', requestID: 'question-2' },
+      },
+    });
+    await flushContinuation();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('resumes on a later idle after a question rejection', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.rejected',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('invalidates an in-flight continuation when an input wait arrives', async () => {
+    let resolveTodo!: (value: { data: { status: string }[] }) => void;
+    const todo = mock(
+      () =>
+        new Promise<{ data: { status: string }[] }>((resolve) => {
+          resolveTodo = resolve;
+        }),
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).toHaveBeenCalledTimes(1);
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    resolveTodo({ data: [{ status: 'pending' }] });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('internal and synthetic messages do not clear an input wait', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [
+          { type: 'text', synthetic: true, text: 'synthetic response' },
+          createInternalAgentTextPart('internal response'),
+        ],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('retains input waits across a session error', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.error', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('clears stale input waits on session and server cleanup', async () => {
+    for (const lifecycleEvent of [
+      { type: 'session.deleted', properties: { sessionID: 'parent-1' } },
+      { type: 'server.instance.disposed' },
+    ]) {
+      const promptAsync = mock(async () => ({}));
+      const { hook } = createHook({
+        idleReconcileDelayMs: 0,
+        sessionClient: {
+          todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+          children: mock(async () => ({ data: [] })),
+          status: mock(async () => ({ data: {} })),
+          promptAsync,
+        },
+      });
+
+      await hook.event({
+        event: {
+          type: 'question.asked',
+          properties: { sessionID: 'parent-1', id: 'question-1' },
+        },
+      });
+      await hook.event({ event: lifecycleEvent });
+      await hook.event({
+        event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+      });
+      await flushContinuation();
+
+      expect(promptAsync).toHaveBeenCalledTimes(1);
+    }
+  });
+
   test('coalesces paired idle events and suppresses active children', async () => {
     const promptAsync = mock(async () => ({}));
     const children = mock(async () => ({ data: [{ id: 'child-1' }] }));
@@ -2845,6 +3197,37 @@ describe('task-session-manager hook', () => {
       {
         message: { role: 'user', sessionID: 'parent-1' },
         parts: [{ type: 'text', text: 'continue' }],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(2);
+  });
+
+  test('file-only external messages rearm a consumed nudge', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [{ type: 'file', filename: 'command-output.txt' }],
       },
     );
     await hook.event({

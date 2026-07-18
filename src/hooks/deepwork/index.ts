@@ -16,7 +16,7 @@ function activationPrompt(task: string): string {
     '- before execution, show the user a compact overview with phase titles/order, delegated specialists and ownership/scope, plus the Oracle review total, gate after each phase, and a short reason for each;',
     '- execute phase by phase with background specialists where useful;',
     '- wait for hook-driven background completion, reconcile results, validate and update state, then ask `@oracle` to review every planned phase before continuing;',
-    '- batch material actionable Oracle findings into one bounded remediation pass and validate it with focused evidence; only re-review when the remediation changes the reviewed decision/risk or the original concern cannot otherwise be verified.',
+    '- batch material actionable Oracle findings, including simplify/readability feedback, into one bounded remediation pass and validate it with focused evidence; only re-review when the remediation changes the reviewed decision/risk or the original concern cannot otherwise be verified.',
     '',
     'Task:',
     task,
