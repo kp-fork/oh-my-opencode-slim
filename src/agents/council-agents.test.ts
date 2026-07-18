@@ -61,6 +61,30 @@ describe('buildCouncillorAgents', () => {
     expect(agent._modelArray).toBeUndefined();
   });
 
+  test('single-model councillor with variant propagates variant to agent config', () => {
+    const config = makeConfig({
+      presets: {
+        default: {
+          beta: {
+            model: 'google/gemini-3-pro',
+            variant: 'high',
+            prompt: undefined,
+            models: [{ id: 'google/gemini-3-pro' }],
+          },
+        },
+      },
+    });
+
+    const agents = buildCouncillorAgents(config, new Set());
+    expect(agents).toHaveLength(1);
+
+    const [agent] = agents;
+    expect(agent.name).toBe('councillor-beta');
+    expect(agent.config.model).toBe('google/gemini-3-pro');
+    expect(agent.config.variant).toBe('high');
+    expect(agent._modelArray).toBeUndefined();
+  });
+
   test('multi-model councillor has _modelArray and config.model undefined', () => {
     const config = makeConfig({
       presets: {

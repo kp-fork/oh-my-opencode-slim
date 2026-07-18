@@ -28,7 +28,12 @@ export function buildCouncillorAgents(
 
     const agentName = `${COUNCILLOR_AGENT_PREFIX}${name}`;
     if (disabled.has(agentName)) continue;
-    const base = createCouncillorAgent(cfg.model, undefined, cfg.prompt);
+    const base = createCouncillorAgent(
+      cfg.model,
+      undefined,
+      cfg.prompt,
+      cfg.variant,
+    );
 
     // If a fallback chain is configured, attach _modelArray for runtime
     // resolution and clear the primary model so the single-model field

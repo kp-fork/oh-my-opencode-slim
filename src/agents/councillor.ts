@@ -55,6 +55,7 @@ export function createCouncillorAgent(
   model: string,
   customPrompt?: string,
   customAppendPrompt?: string,
+  variant?: string,
 ): AgentDefinition {
   const prompt = resolvePrompt(
     COUNCILLOR_PROMPT,
@@ -68,6 +69,7 @@ export function createCouncillorAgent(
       'Read-only council advisor. Examines codebase and provides independent analysis. Spawned internally by the council system.',
     config: {
       model,
+      variant,
       temperature: 0.2,
       prompt,
       // Strict read-only allowlist: deny all, then allow inspection tools only.
