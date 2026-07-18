@@ -307,8 +307,8 @@ If any agent fails to respond, check your provider authentication and config fil
    <tr>
       <td colspan="2">
          <b>Model Guidance:</b> Choose a fast, low-cost model. Explorer handles broad scouting work, so speed and efficiency usually matter more than using your strongest reasoning model.
-    </td>
-  </tr>
+      </td>
+   </tr>
 </table>
 
 ---
@@ -438,8 +438,8 @@ If any agent fails to respond, check your provider authentication and config fil
    <tr>
       <td colspan="2">
          <b>Model Guidance:</b> Choose a fast, low-cost model. Librarian handles research and documentation lookups, so speed and efficiency usually matter more than using your strongest reasoning model.
-    </td>
-  </tr>
+      </td>
+   </tr>
 </table>
 
 ---
@@ -567,7 +567,7 @@ If any agent fails to respond, check your provider authentication and config fil
    <tr>
       <td colspan="2">
          <b>Model Guidance:</b> Choose a vision-capable model if you want the agent to read screenshots, images, PDFs, and other visual files.
-    </td>
+      </td>
   </tr>
 </table>
 
