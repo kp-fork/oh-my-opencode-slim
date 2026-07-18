@@ -143,14 +143,26 @@ function showPresetActions(state: ManagerState, presetName: string): void {
 }
 
 function applyPreset(state: ManagerState, presetName: string): void {
+  applyPresetWithMessage(state, presetName, 'Preset saved');
+}
+
+/**
+ * Apply a preset and show a combined toast. `title` lets Save & Apply show
+ * a single distinct message instead of two separate toasts.
+ */
+function applyPresetWithMessage(
+  state: ManagerState,
+  presetName: string,
+  title: string,
+): void {
   const config = loadPluginConfig(state.directory, { silent: true });
   const result = switchPresetOnDisk(state.directory, presetName, config);
   state.api.ui.dialog.clear();
   state.api.ui.toast({
     variant: result.ok ? 'success' : 'warning',
-    title: result.ok ? 'Preset saved' : 'Preset switch failed',
+    title: result.ok ? title : 'Preset switch failed',
     message: result.ok
-      ? `Saved preset "${presetName}". Reload OpenCode to apply. ${result.summary.join('; ')}`
+      ? `Saved preset "${presetName}". Reload OpenCode to apply it to the agent registry. ${result.summary.join('; ')}`
       : result.message,
   });
   if (result.ok) {
@@ -211,10 +223,43 @@ function promptAndCreatePreset(
             promptAndCreatePreset(state, onCancel);
             return;
           }
-          // Start editing an empty preset under this name.
+          // Check for name collision before opening an empty working copy,
+          // to avoid silently overwriting an existing preset on save.
+          const config = loadPluginConfig(state.directory, {
+            silent: true,
+          });
+          if (config.presets?.[name]) {
+            confirmOverwritePreset(state, name, onCancel);
+            return;
+          }
           editPresetWorkingCopy(state, name, {});
         },
         onCancel,
+      }),
+    }),
+  );
+}
+
+/**
+ * Confirm overwriting an existing preset when the user enters a name that
+ * already exists in the Create new preset prompt.
+ */
+function confirmOverwritePreset(
+  state: ManagerState,
+  name: string,
+  onCancel: () => void,
+): void {
+  state.api.ui.dialog.replace(() =>
+    state.api.ui.Dialog({
+      size: 'large',
+      onClose: () => state.api.ui.dialog.clear(),
+      children: state.api.ui.DialogConfirm({
+        title: 'Preset exists',
+        message: `A preset named "${name}" already exists. Overwrite it with a new empty preset?`,
+        onConfirm: () => {
+          editPresetWorkingCopy(state, name, {});
+        },
+        onCancel: () => promptAndCreatePreset(state, onCancel),
       }),
     }),
   );
@@ -266,8 +311,14 @@ function editPresetWorkingCopy(
               savePreset(state, presetName, working, false);
               break;
             case '__omo_save_apply__': {
-              const saved = savePreset(state, presetName, working, false);
-              if (saved) applyPreset(state, presetName);
+              const saved = savePreset(state, presetName, working, false, true);
+              if (saved) {
+                applyPresetWithMessage(
+                  state,
+                  presetName,
+                  'Preset saved & applied',
+                );
+              }
               break;
             }
             case ACTION_BACK:
@@ -378,6 +429,7 @@ function savePreset(
   presetName: string,
   working: Preset,
   returnToList: boolean,
+  silent = false,
 ): boolean {
   // Strip agents whose override is empty — they add nothing to the preset.
   const cleaned: Preset = {};
@@ -387,13 +439,15 @@ function savePreset(
     }
   }
   const ok = writePreset(state.directory, presetName, cleaned);
-  state.api.ui.toast({
-    variant: ok ? 'success' : 'warning',
-    title: ok ? 'Preset saved' : 'Save failed',
-    message: ok
-      ? `Saved preset "${presetName}" to config.`
-      : `Could not write preset "${presetName}" to the config file.`,
-  });
+  if (!silent) {
+    state.api.ui.toast({
+      variant: ok ? 'success' : 'warning',
+      title: ok ? 'Preset saved' : 'Save failed',
+      message: ok
+        ? `Saved preset "${presetName}" to config.`
+        : `Could not write preset "${presetName}" to the config file.`,
+    });
+  }
   if (returnToList) {
     showPresetList(state);
   }
