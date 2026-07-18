@@ -307,8 +307,8 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     chatHeadersHook = createChatHeadersHook(ctx);
 
     // Initialize foreground fallback manager for runtime model switching.
-    // Enabled by default even without fallback chains — the manager can still
-    // abort rate-limited sessions after maxRetries to prevent infinite freezes.
+    // Agents without a chain (e.g. councillor, owned by CouncilManager) are
+    // left alone — FG only aborts/re-prompts when it has a model to switch to.
     foregroundFallback = new ForegroundFallbackManager(
       ctx.client,
       runtimeChains,
