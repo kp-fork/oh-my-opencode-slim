@@ -255,12 +255,12 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>gpt-5.6-terra (medium)</code>
+      <b>Default Model:</b> <code>gpt-5.6-terra</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>gpt-5.6-terra (medium)</code> <code>claude-fable-5</code> <code>claude-opus-4-8</code> <code>glm-5.2</code> <code>minimax-m3</code> <code>qwen3.7-plus</code> <code>mimo-v2.5</code>
+      <b>Recommended Models:</b> <code>gpt-5.6-terra</code> <code>claude-fable-5</code> <code>claude-opus-4-8</code> <code>glm-5.2</code> <code>minimax-m3</code> <code>qwen3.7-plus</code> <code>mimo-v2.5</code>
     </td>
   </tr>
   <tr>
@@ -337,12 +337,12 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>gpt-5.6-sol (high)</code>
+      <b>Default Model:</b> <code>gpt-5.6-sol</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>gpt-5.6-sol (xhigh)</code> <code>claude-fable-5</code> <code>claude-opus-4-8 (xhigh)</code> <code>deepseek-v4-pro</code> <code>qwen3.7-max</code> <code>mimo-v2.5-pro</code> <code>glm-5.2</code> <code>big-pickle</code>
+      <b>Recommended Models:</b> <code>gpt-5.6-sol</code> <code>claude-fable-5</code> <code>claude-opus-4-8</code> <code>deepseek-v4-pro</code> <code>qwen3.7-max</code> <code>mimo-v2.5-pro</code> <code>glm-5.2</code> <code>big-pickle</code>
     </td>
   </tr>
   <tr>
@@ -509,12 +509,12 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>gpt-5.6-luna (medium)</code>
+      <b>Default Model:</b> <code>gpt-5.6-luna</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>gpt-5.6-luna (medium)</code> <code>claude-sonnet-4-6</code> <code>kimi-k2.7-code</code> <code>deepseek-v4-flash</code> <code>north-mini-code</code>
+      <b>Recommended Models:</b> <code>gpt-5.6-luna</code> <code>claude-sonnet-4-6</code> <code>kimi-k2.7-code</code> <code>deepseek-v4-flash</code> <code>north-mini-code</code>
     </td>
   </tr>
   <tr>
