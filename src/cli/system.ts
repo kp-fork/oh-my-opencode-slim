@@ -74,10 +74,8 @@ function getOpenCodePaths(
 ): string[] {
   const home = environment.HOME || environment.USERPROFILE || '';
   const isWindows = process.platform === 'win32';
-  const appData =
-    environment.APPDATA || `${home}\\AppData\\Roaming`;
-  const localAppData =
-    environment.LOCALAPPDATA || `${home}\\AppData\\Local`;
+  const appData = environment.APPDATA || `${home}\\AppData\\Roaming`;
+  const localAppData = environment.LOCALAPPDATA || `${home}\\AppData\\Local`;
 
   const windowsPaths = isWindows
     ? [

@@ -27,6 +27,7 @@ import { CouncilManager } from './council';
 import {
   createApplyPatchHook,
   createAutoUpdateCheckerHook,
+  createCacheMonitorHook,
   createChatHeadersHook,
   createDeepworkCommandHook,
   createDelegateTaskRetryHook,
@@ -130,6 +131,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     log('[plugin] disabled by OH_MY_OPENCODE_SLIM_DISABLE');
     return {};
   }
+
+  // Observation-only prompt-cache watchdog; safe to create before config
+  // loads and must see every event, so it sits outside the try block.
+  const cacheMonitor = createCacheMonitorHook();
 
   // Declare variables that must survive the try/catch for the return
   // closure. These are set inside the try block.
@@ -869,6 +874,8 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     },
 
     event: async (input) => {
+      await cacheMonitor.event(input);
+
       const event = input.event as {
         type: string;
         properties?: {

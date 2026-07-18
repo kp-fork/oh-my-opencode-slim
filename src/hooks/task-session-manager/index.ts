@@ -12,10 +12,13 @@ import {
 } from '../../utils';
 import { isRecord as isObjectRecord } from '../../utils/guards';
 import { log } from '../../utils/logger';
+import {
+  appendTrailingVolatileMessage,
+  stripTaggedContent,
+} from '../cache-safe-injection';
 import { isFailoverError } from '../foreground-fallback/index';
 import type { SessionLifecycle } from '../session-lifecycle';
 import {
-  isMessageWithParts,
   isUserMessageWithParts,
   type MessagePart,
   type MessageWithParts,
@@ -651,14 +654,6 @@ export function createTaskSessionManagerHook(
     terminalJobsInjectedByParent.delete(parentSessionID);
   }
 
-  function isBoardPart(part: MessagePart): boolean {
-    return (
-      part.synthetic === true &&
-      isObjectRecord(part.metadata) &&
-      part.metadata[BACKGROUND_JOB_BOARD_METADATA_KEY] === true
-    );
-  }
-
   async function injectBackgroundJobBoard(
     _input: Record<string, never>,
     output: { messages?: unknown },
@@ -667,13 +662,7 @@ export function createTaskSessionManagerHook(
 
     // Strip previously injected board content: parts attached to real
     // messages (legacy placement) and whole synthetic board messages.
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const message = messages[i];
-      if (!isMessageWithParts(message)) continue;
-      const hadParts = message.parts.length > 0;
-      message.parts = message.parts.filter((part) => !isBoardPart(part));
-      if (hadParts && message.parts.length === 0) messages.splice(i, 1);
-    }
+    stripTaggedContent(messages, BACKGROUND_JOB_BOARD_METADATA_KEY);
 
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       const message = messages[i];
@@ -703,20 +692,17 @@ export function createTaskSessionManagerHook(
       // would invalidate the provider prompt cache for everything after
       // it. A trailing message keeps board churn at the end of the
       // prompt, where it only costs itself.
-      messages.push({
-        info: {
+      appendTrailingVolatileMessage(
+        messages,
+        {
           ...message.info,
           id: `${message.info.id}-background-job-board`,
         },
-        parts: [
-          {
-            type: 'text',
-            synthetic: true,
-            text: reminder,
-            metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
-          },
-        ],
-      });
+        {
+          text: reminder,
+          metadataKey: BACKGROUND_JOB_BOARD_METADATA_KEY,
+        },
+      );
       return;
     }
   }

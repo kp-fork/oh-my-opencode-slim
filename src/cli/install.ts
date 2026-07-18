@@ -148,7 +148,9 @@ async function checkOpenCodeInstalled(): Promise<{
       console.log();
       printInfo('Or if already installed, add it to your PATH:');
       console.log(`     ${BLUE}export PATH="$HOME/.local/bin:$PATH"${RESET}`);
-      console.log(`     ${BLUE}export PATH="$HOME/.opencode/bin:$PATH"${RESET}`);
+      console.log(
+        `     ${BLUE}export PATH="$HOME/.opencode/bin:$PATH"${RESET}`,
+      );
     }
     return { ok: false };
   }
