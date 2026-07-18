@@ -52,6 +52,27 @@ const IDLE_RECONCILE_DELAY_MS = 2_000;
 
 const CONTINUATION_NUDGE =
   'Continue coordinating the remaining incomplete todos. Do not finalize while work remains.';
+const INPUT_WAIT_ASK_EVENTS = {
+  'permission.asked': 'permission',
+  'question.asked': 'question',
+} as const;
+const INPUT_WAIT_RESOLUTION_EVENTS = {
+  'permission.replied': 'permission',
+  'question.replied': 'question',
+  'question.rejected': 'question',
+} as const;
+
+function isInputWaitAskEvent(
+  type: string,
+): type is keyof typeof INPUT_WAIT_ASK_EVENTS {
+  return Object.hasOwn(INPUT_WAIT_ASK_EVENTS, type);
+}
+
+function isInputWaitResolutionEvent(
+  type: string,
+): type is keyof typeof INPUT_WAIT_RESOLUTION_EVENTS {
+  return Object.hasOwn(INPUT_WAIT_RESOLUTION_EVENTS, type);
+}
 
 function djb2Hash(str: string): string {
   let hash = 5381;
@@ -133,6 +154,7 @@ export function createTaskSessionManagerHook(
   const continuationSessionTokens = new Map<string, symbol>();
   const activeContinuationEvaluations = new Map<string, Set<symbol>>();
   const continuationConsumed = new Set<string>();
+  const inputWaitsByParent = new Map<string, Set<string>>();
   const idleReconcileDelayMs =
     options.idleReconcileDelayMs ?? IDLE_RECONCILE_DELAY_MS;
 
@@ -183,6 +205,51 @@ export function createTaskSessionManagerHook(
     continuationConsumed.delete(sessionID);
   }
 
+  function inputWaitKey(kind: 'permission' | 'question', requestID: string) {
+    return `${kind}:${requestID}`;
+  }
+
+  function hasInputWait(sessionID: string): boolean {
+    return (inputWaitsByParent.get(sessionID)?.size ?? 0) > 0;
+  }
+
+  function clearInputWaits(sessionID: string): void {
+    inputWaitsByParent.delete(sessionID);
+  }
+
+  function trackInputWait(event: {
+    type: string;
+    properties?: { id?: string; requestID?: string; sessionID?: string };
+  }): void {
+    const sessionID = event.properties?.sessionID;
+    if (!sessionID || !options.shouldManageSession(sessionID)) {
+      return;
+    }
+
+    if (isInputWaitAskEvent(event.type)) {
+      const requestID = event.properties?.id;
+      if (!requestID) return;
+      const key = inputWaitKey(INPUT_WAIT_ASK_EVENTS[event.type], requestID);
+      const waits = inputWaitsByParent.get(sessionID) ?? new Set<string>();
+      waits.add(key);
+      inputWaitsByParent.set(sessionID, waits);
+      invalidateContinuation(sessionID);
+      return;
+    }
+
+    if (!isInputWaitResolutionEvent(event.type)) return;
+    const requestID = event.properties?.requestID;
+    if (!requestID) return;
+    const key = inputWaitKey(
+      INPUT_WAIT_RESOLUTION_EVENTS[event.type],
+      requestID,
+    );
+    const waits = inputWaitsByParent.get(sessionID);
+    if (!waits) return;
+    waits.delete(key);
+    if (waits.size === 0) clearInputWaits(sessionID);
+  }
+
   function isActiveStatus(
     status: Record<string, unknown>,
     sessionID: string,
@@ -202,6 +269,7 @@ export function createTaskSessionManagerHook(
 
     if (
       continuationConsumed.has(parentSessionID) ||
+      hasInputWait(parentSessionID) ||
       !isCurrentContinuation(parentSessionID, sessionToken, evaluationToken) ||
       options.isFallbackInProgress?.(parentSessionID) ||
       backgroundJobBoard.hasTerminalUnreconciled(parentSessionID) ||
@@ -281,6 +349,7 @@ export function createTaskSessionManagerHook(
           (child) => isObjectRecord(child) && typeof child.id === 'string',
         ) ||
         continuationConsumed.has(parentSessionID) ||
+        hasInputWait(parentSessionID) ||
         !isCurrentContinuation(
           parentSessionID,
           sessionToken,
@@ -304,6 +373,7 @@ export function createTaskSessionManagerHook(
 
       if (
         continuationConsumed.has(parentSessionID) ||
+        hasInputWait(parentSessionID) ||
         !isCurrentContinuation(
           parentSessionID,
           sessionToken,
@@ -340,6 +410,7 @@ export function createTaskSessionManagerHook(
   function scheduleIdleReconciliation(parentSessionID: string): void {
     if (
       idleReconcileTimers.has(parentSessionID) ||
+      hasInputWait(parentSessionID) ||
       options.isFallbackInProgress?.(parentSessionID)
     ) {
       return;
@@ -363,6 +434,7 @@ export function createTaskSessionManagerHook(
   if (options.coordinator) {
     options.coordinator.onSessionDeleted((sessionId) => {
       clearContinuation(sessionId);
+      clearInputWaits(sessionId);
       // During a foreground fallback abort/re-prompt cycle, the session
       // is being torn down and immediately recreated with a fallback model.
       // Dropping the job from the board here would make the orchestrator
@@ -667,10 +739,11 @@ export function createTaskSessionManagerHook(
         !parts.some(
           (part) =>
             isObjectRecord(part) &&
-            part.type === 'text' &&
-            typeof part.text === 'string' &&
             part.synthetic !== true &&
-            !isInternalInitiatorPart(part),
+            !isInternalInitiatorPart(part) &&
+            ((part.type === 'text' && typeof part.text === 'string') ||
+              part.type === 'file' ||
+              part.type === 'image'),
         )
       ) {
         return;
@@ -937,12 +1010,16 @@ export function createTaskSessionManagerHook(
         type: string;
         properties?: {
           info?: { id?: string; parentID?: string };
+          id?: string;
+          requestID?: string;
           sessionID?: string;
           status?: { type?: string };
           error?: { name?: string };
         };
       };
     }): Promise<void> => {
+      trackInputWait(input.event);
+
       if (input.event.type === 'session.created') {
         const info = input.event.properties?.info;
         log('[task-session-manager] session.created observed', {
@@ -997,9 +1074,11 @@ export function createTaskSessionManagerHook(
           ...continuationSessionTokens.keys(),
           ...activeContinuationEvaluations.keys(),
           ...continuationConsumed,
+          ...inputWaitsByParent.keys(),
         ]);
         for (const sessionID of continuationSessionIDs) {
           clearContinuation(sessionID);
+          clearInputWaits(sessionID);
         }
         return;
       }
@@ -1064,7 +1143,9 @@ export function createTaskSessionManagerHook(
       if (input.event.type === 'session.error') {
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
-        if (sessionId) invalidateContinuation(sessionId);
+        if (sessionId) {
+          invalidateContinuation(sessionId);
+        }
         if (sessionId && options.shouldManageSession(sessionId)) {
           // Only clear injected terminal jobs for fatal errors.
           // Rate-limit errors are recovered by ForegroundFallbackManager
@@ -1129,6 +1210,7 @@ export function createTaskSessionManagerHook(
       if (!sessionId) return;
 
       clearContinuation(sessionId);
+      clearInputWaits(sessionId);
 
       log('[task-session-manager] session.deleted observed', {
         sessionID: sessionId,
