@@ -260,7 +260,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.6-terra (medium)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.6-terra (medium)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8</code> <code>opencode-go/glm-5.2</code> <code>opencode-go/minimax-m3</code> <code>opencode-go/qwen3.7-plus</code>
     </td>
   </tr>
   <tr>
@@ -301,12 +301,12 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, low-cost model. Explorer handles broad scouting work, so speed and efficiency usually matter more than using your strongest reasoning model.
+      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code> <code>opencode-go/kimi-k2.6</code> <code>opencode-go/deepseek-v4-flash</code>
+      </td>
+   </tr>
+   <tr>
+      <td colspan="2">
+         <b>Model Guidance:</b> Choose a fast, low-cost model. Explorer handles broad scouting work, so speed and efficiency usually matter more than using your strongest reasoning model.
     </td>
   </tr>
 </table>
@@ -342,7 +342,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.6-sol (xhigh)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8 (xhigh)</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.6-sol (xhigh)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8 (xhigh)</code> <code>opencode-go/deepseek-v4-pro</code> <code>opencode-go/qwen3.7-max</code> <code>opencode-go/mimo-v2.5-pro</code> <code>opencode-go/glm-5.2</code>
     </td>
   </tr>
   <tr>
@@ -432,12 +432,12 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, low-cost model. Librarian handles research and documentation lookups, so speed and efficiency usually matter more than using your strongest reasoning model.
+      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code> <code>opencode-go/kimi-k2.6</code> <code>opencode-go/deepseek-v4-flash</code> <code>opencode-go/mimo-v2.5</code>
+      </td>
+   </tr>
+   <tr>
+      <td colspan="2">
+         <b>Model Guidance:</b> Choose a fast, low-cost model. Librarian handles research and documentation lookups, so speed and efficiency usually matter more than using your strongest reasoning model.
     </td>
   </tr>
 </table>
@@ -473,7 +473,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>google/gemini-3.5-flash</code> <code>moonshotai/kimi-k2.7-code</code>
+      <b>Recommended Models:</b> <code>google/gemini-3.5-flash</code> <code>moonshotai/kimi-k2.7-code</code> <code>opencode-go/kimi-k2.7-code</code> <code>opencode-go/minimax-m3</code>
     </td>
   </tr>
   <tr>
@@ -514,7 +514,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.6-luna (medium)</code> <code>anthropic/claude-sonnet-4-6</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.6-luna (medium)</code> <code>anthropic/claude-sonnet-4-6</code> <code>opencode-go/kimi-k2.7-code</code> <code>opencode-go/deepseek-v4-flash</code>
     </td>
   </tr>
   <tr>
@@ -557,11 +557,16 @@ If any agent fails to respond, check your provider authentication and config fil
   <tr>
     <td colspan="2">
       <b>Default Model:</b> <code>openai/gpt-5.6-luna</code> - <i>configure a vision-capable model to enable</i>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <b>Model Guidance:</b> Choose a vision-capable model if you want the agent to read screenshots, images, PDFs, and other visual files.
+      </td>
+   </tr>
+   <tr>
+      <td colspan="2">
+         <b>Recommended Models:</b> <code>opencode-go/mimo-v2.5</code> <code>opencode-go/mimo-v2.5-pro</code>
+      </td>
+   </tr>
+   <tr>
+      <td colspan="2">
+         <b>Model Guidance:</b> Choose a vision-capable model if you want the agent to read screenshots, images, PDFs, and other visual files.
     </td>
   </tr>
 </table>
