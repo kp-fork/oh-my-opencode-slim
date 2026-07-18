@@ -260,7 +260,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.6-terra (medium)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8</code> <code>opencode-go/glm-5.2</code> <code>opencode-go/minimax-m3</code> <code>opencode-go/qwen3.7-plus</code> <code>opencode/mimo-v2.5</code> <code>opencode/nemotron-3-ultra</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.6-terra (medium)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8</code> <code>opencode-go/glm-5.2</code> <code>opencode-go/minimax-m3</code> <code>opencode-go/qwen3.7-plus</code> <code>opencode/mimo-v2.5</code>
     </td>
   </tr>
   <tr>
