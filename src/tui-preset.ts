@@ -10,17 +10,23 @@
  * so it triggers no LLM turn — same channel as the built-in `/models`.
  *
  * All preset mutations are written to the user-level config file
- * (`oh-my-opencode-slim.json[c]`). Applying a preset writes the `preset`
- * field and the TUI snapshot; a reload is required for the live agent
- * registry to pick it up (the current session is deliberately not
- * interrupted, to avoid destabilizing running subagents).
+ * (`oh-my-opencode-slim.json[c]`). Applying a preset persists the preset
+ * name and refreshes the on-disk TUI snapshot so the sidebar shows the new
+ * models. The agent registry is NOT hot-swapped mid-session — a reload is
+ * required. This is deliberate: hot-swapping the agent tree during an
+ * active conversation could truncate context (a new model may have a
+ * smaller window), drift prior assistant turns under a changed system
+ * prompt, leave running subagents referencing stale agent definitions, or
+ * shift tool/skill availability underfoot. Reload-on-switch keeps the
+ * active session stable. A future path to true in-session switching
+ * without reset requires upgrading `@opencode-ai/plugin` (tracked in #799).
  */
 import type {
   TuiDialogSelectOption,
   TuiPluginApi,
 } from '@opencode-ai/plugin/tui';
 import type { JSX } from '@opentui/solid';
-import { createElement, insert, setProp } from '@opentui/solid';
+import { createElement, insert } from '@opentui/solid';
 import type { AgentOverrideConfig, Preset } from './config';
 import { ALL_AGENT_NAMES } from './config/constants';
 import { loadPluginConfig } from './config/loader';
@@ -37,7 +43,6 @@ import { readTuiSnapshot } from './tui-state';
 /** Build a `<text>` JSX element — required for DialogPrompt.description(). */
 function desc(text: string): JSX.Element {
   const node = createElement('text');
-  setProp(node, 'text', text);
   insert(node, text);
   return node as JSX.Element;
 }
@@ -674,11 +679,11 @@ function pickTemperature(
           const next: AgentOverrideConfig = { ...current };
           if (trimmed) {
             const parsed = Number(trimmed);
-            if (Number.isNaN(parsed)) {
+            if (Number.isNaN(parsed) || parsed < 0 || parsed > 2) {
               state.api.ui.toast({
                 variant: 'warning',
                 title: 'Invalid temperature',
-                message: 'Temperature must be a number.',
+                message: 'Temperature must be a number between 0 and 2.',
               });
               pickTemperature(state, presetName, working, agentName, current);
               return;

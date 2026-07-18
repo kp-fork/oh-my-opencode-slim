@@ -225,8 +225,10 @@ function resolveFirstModel(
 
 /**
  * Persist the preset name to the user-level config file so it survives
- * restarts. Best-effort: a failure must not abort the switch, because the TUI
- * snapshot update is the immediate user-visible effect.
+ * restarts. Best-effort: a failure must not abort the switch, because the
+ * TUI snapshot refresh is the user-visible effect (the sidebar shows the
+ * new models); the agent registry itself only picks up the change on
+ * reload.
  *
  * Note: this rewrites the file as plain JSON (JSONC comments are not
  * preserved), matching the prior server-side behavior.
@@ -243,13 +245,16 @@ function persistPresetName(directory: string, presetName: string): void {
     persisted.preset = presetName;
     fs.writeFileSync(userConfigPath, `${JSON.stringify(persisted, null, 2)}\n`);
   } catch {
-    // Non-critical: the TUI snapshot is updated regardless.
+    // Non-critical: the TUI snapshot refresh still proceeds, so the
+    // sidebar still reflects the new models.
   }
 }
 
 /**
- * Merge the preset's model/variant overrides into the on-disk TUI snapshot so
- * the sidebar reflects the new models on its next poll.
+ * Merge the preset's model/variant overrides into the on-disk TUI snapshot
+ * so the sidebar reflects the new models on its next poll. This is a
+ * visual refresh only — the agent registry is not hot-swapped; reload
+ * OpenCode for the new models to take effect on the running agents.
  */
 function applyPresetToTuiSnapshot(
   directory: string,

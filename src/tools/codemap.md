@@ -43,7 +43,7 @@ Each tool is implemented as a factory function that returns a `ToolDefinition` r
 ### State Management
 
 - **Runtime Presets**: Preset state persists across plugin reloads via `runtime-preset.ts`
-- **TUI Integration**: Preset changes update the terminal UI snapshot for immediate feedback
+- **TUI Integration**: Preset changes refresh the terminal UI snapshot (sidebar shows new models); the agent registry takes effect on reload, not mid-session — hot-swapping the agent tree during an active conversation risks context truncation, drifted prior turns, and stale subagent references
 - **Background Jobs**: Task cancellation uses a centralized job board for tracking and cleanup
 
 ## Flow
