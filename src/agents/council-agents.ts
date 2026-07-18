@@ -29,6 +29,15 @@ export function buildCouncillorAgents(
 
     const agentName = `${COUNCILLOR_AGENT_PREFIX}${name}`;
     const base = createCouncillorAgent(cfg.model, undefined, cfg.prompt);
+
+    // If a fallback chain is configured, attach _modelArray for runtime
+    // resolution and clear the primary model so the single-model field
+    // doesn't override the chain (mirrors orchestrator.ts pattern).
+    if (cfg.models.length > 1) {
+      base._modelArray = cfg.models;
+      base.config.model = undefined;
+    }
+
     agents.push({ ...base, name: agentName });
   }
 

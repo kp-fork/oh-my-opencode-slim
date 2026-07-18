@@ -509,7 +509,12 @@ export function createAgents(
   // Build dynamic councillor agents from council config (flatten mode).
   // Each councillor becomes a dispatchable subagent with its own model,
   // so the orchestrator can task() them with native panes at depth 1.
-  const councillorAgents = buildCouncillorAgents(config, disabled);
+  const councillorAgents = buildCouncillorAgents(config, disabled).map(
+    (agent) => {
+      applyDefaultPermissions(agent, undefined, config?.disabled_skills);
+      return agent;
+    },
+  );
 
   const allSubAgents = [
     ...builtInSubAgents,
