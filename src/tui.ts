@@ -1,8 +1,13 @@
-import type { TuiPluginModule } from '@opencode-ai/plugin/tui';
+import type {
+  TuiCommand,
+  TuiPluginApi,
+  TuiPluginModule,
+} from '@opencode-ai/plugin/tui';
 import type { JSX } from '@opentui/solid';
 import { createElement, insert, setProp } from '@opentui/solid';
 import { DEFAULT_DISABLED_AGENTS, SUBAGENT_NAMES } from './config/constants';
 import { loadPluginConfig } from './config/loader';
+import { openPresetManager } from './tui-preset';
 import {
   readTuiSnapshot,
   readTuiSnapshotAsync,
@@ -244,6 +249,32 @@ export function readCompactSidebar(directory: string): boolean {
   return readConfigState(directory).compactSidebar;
 }
 
+/**
+ * Build the TUI slash command for `/preset`. Registered via the legacy
+ * `api.command` API (still populated in OpenCode 1.18 for v1 plugins). If the
+ * API is unavailable the command is simply not registered and `/preset` is a
+ * no-op.
+ *
+ * The command opens a three-level preset manager (list → edit → agent model)
+ * implemented in `src/tui-preset.ts`. Like the built-in `/models`, it is pure
+ * TUI and triggers no LLM turn.
+ */
+function buildPresetCommand(
+  api: TuiPluginApi,
+  directoryGetter: () => string,
+  snapshotRef: { snapshot: TuiSnapshot },
+): TuiCommand {
+  return {
+    title: 'Switch preset',
+    value: 'preset',
+    description: 'Switch agent presets at runtime (e.g. /preset cheap)',
+    slash: { name: 'preset' },
+    onSelect: () => {
+      openPresetManager(api, directoryGetter(), snapshotRef);
+    },
+  };
+}
+
 const plugin: TuiPluginModule & { id: string } = {
   id: `${PLUGIN_NAME}:tui`,
   tui: async (api, _options, meta) => {
@@ -286,6 +317,26 @@ const plugin: TuiPluginModule & { id: string } = {
         },
       },
     });
+
+    // `/preset` is a pure TUI slash command (like the built-in `/models`):
+    // it opens a picker, switches the preset via on-disk state, and never
+    // sends a message to the server or triggers an LLM turn. The legacy
+    // `api.command` API is still populated in OpenCode 1.18; if it is absent
+    // (e.g. a future v2-only build), registration is skipped gracefully.
+    if (api.command) {
+      const snapshotRef: { snapshot: TuiSnapshot } = {
+        get snapshot() {
+          return snapshot;
+        },
+        set snapshot(value: TuiSnapshot) {
+          snapshot = value;
+        },
+      };
+      const disposeCommands = api.command.register(() => [
+        buildPresetCommand(api, () => configDirectory, snapshotRef),
+      ]);
+      api.lifecycle.onDispose(disposeCommands);
+    }
   },
 };
 

@@ -55,7 +55,6 @@ import {
   ast_grep_search,
   createAcpRunTool,
   createCancelTaskTool,
-  createPresetManager,
   createWebfetchTool,
 } from './tools';
 import { recordTuiAgentModel, recordTuiAgentModels } from './tui-state';
@@ -172,7 +171,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let taskSessionManagerAfter: (i: unknown, o: unknown) => Promise<void>;
   let backgroundJobBoard: BackgroundJobBoard;
   let interviewManager: ReturnType<typeof createInterviewManager>;
-  let presetManager: ReturnType<typeof createPresetManager>;
   let companionManager: CompanionManager;
   let cancelTaskTools: ReturnType<typeof createCancelTaskTool>;
   let acpRunTools: Record<string, ReturnType<typeof createAcpRunTool>>;
@@ -400,7 +398,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       taskSessionManagerHook['tool.execute.after'](i as never, o as never),
     );
     interviewManager = createInterviewManager(ctx, config);
-    presetManager = createPresetManager(ctx, config);
     companionManager = new CompanionManager(
       `proc_${process.pid}`,
       ctx.directory,
@@ -858,7 +855,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       deepworkCommandHook.registerCommand(opencodeConfig);
       reflectCommandHook.registerCommand(opencodeConfig);
       loopCommandHook.registerCommand(opencodeConfig);
-      presetManager.registerCommand(opencodeConfig);
     },
 
     event: async (input) => {
@@ -1016,15 +1012,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     'command.execute.before': async (input, output) => {
       await interviewManager.handleCommandExecuteBefore(
-        input as {
-          command: string;
-          sessionID: string;
-          arguments: string;
-        },
-        output as { parts: Array<{ type: string; text?: string }> },
-      );
-
-      await presetManager.handleCommandExecuteBefore(
         input as {
           command: string;
           sessionID: string;
