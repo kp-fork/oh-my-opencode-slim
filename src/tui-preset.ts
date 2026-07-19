@@ -325,6 +325,16 @@ function editPresetWorkingCopy(
                   presetName,
                   'Preset saved & applied',
                 );
+              } else {
+                // savePreset is called silent=true to avoid a double toast on
+                // the happy path, but that also suppresses the failure toast.
+                // Restore explicit feedback so a failed write doesn't leave the
+                // user staring at an unchanged Level 2 dialog with no message.
+                state.api.ui.toast({
+                  variant: 'warning',
+                  title: 'Save failed',
+                  message: `Could not write preset "${presetName}" to the config file.`,
+                });
               }
               break;
             }
