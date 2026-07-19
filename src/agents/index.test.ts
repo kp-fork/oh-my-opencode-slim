@@ -14,6 +14,7 @@ import {
   getDisabledAgents,
   isSubagent,
 } from './index';
+import { TASK_REJECTION_INSTRUCTION } from './task-rejection';
 
 function councilConfig() {
   const parsed = CouncilConfigSchema.parse({
@@ -467,6 +468,62 @@ describe('agent classification', () => {
 });
 
 describe('createAgents', () => {
+  test('keeps task-rejection instructions in default subagent prompts without modifying replacements', () => {
+    const agents = createAgents({
+      disabled_agents: [],
+      council: councilConfig(),
+      agents: {
+        explorer: {
+          model: 'test/explorer',
+          prompt: 'Replacement explorer prompt.',
+        },
+        reviewer: {
+          model: 'test/reviewer',
+          prompt: 'Custom reviewer prompt.',
+        },
+      },
+      acpAgents: {
+        bridge: {
+          command: 'bridge-acp',
+          args: [],
+          env: {},
+          timeoutMs: 0,
+          permissionMode: 'ask',
+        },
+      },
+    });
+
+    const orchestrator = agents.find((agent) => agent.name === 'orchestrator');
+    const explorer = agents.find((agent) => agent.name === 'explorer');
+
+    expect(explorer?.config.prompt).toBe('Replacement explorer prompt.');
+    expect(orchestrator?.config.prompt).not.toContain(
+      TASK_REJECTION_INSTRUCTION,
+    );
+    expect(agents.map((agent) => agent.name)).toEqual(
+      expect.arrayContaining([
+        'observer',
+        'council',
+        'councillor',
+        'councillor-alpha',
+        'reviewer',
+        'bridge',
+      ]),
+    );
+
+    for (const agent of agents.filter((agent) =>
+      [
+        'observer',
+        'council',
+        'councillor',
+        'councillor-alpha',
+        'bridge',
+      ].includes(agent.name),
+    )) {
+      expect(agent.config.prompt).toContain(TASK_REJECTION_INSTRUCTION);
+    }
+  });
+
   test('creates all agents without config', () => {
     const agents = createAgents();
     const names = agents.map((a) => a.name);

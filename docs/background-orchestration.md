@@ -266,6 +266,13 @@ Include:
 - validation to run or report,
 - what not to do.
 
+### Task-fit rejections
+
+If a task is outside a specialist's role, it must not attempt partial work. It
+returns a brief reason to the orchestrator.
+The orchestrator treats that reason as routing input to reroute or clarify the
+task and must not retry the unchanged task with the same specialist.
+
 Good background task prompt:
 
 ```text

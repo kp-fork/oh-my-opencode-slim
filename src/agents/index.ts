@@ -30,6 +30,7 @@ import {
   createOrchestratorAgent,
   resolvePrompt,
 } from './orchestrator';
+import { appendTaskRejectionInstruction } from './task-rejection';
 
 export type { AgentDefinition } from './orchestrator';
 
@@ -231,7 +232,10 @@ function buildCustomAgentDefinition(
   filePrompt?: string,
   fileAppendPrompt?: string,
 ): AgentDefinition {
-  const basePrompt = override.prompt ?? `You are the ${name} specialist.`;
+  const defaultPrompt = appendTaskRejectionInstruction(
+    `You are the ${name} specialist.`,
+  );
+  const basePrompt = override.prompt ?? defaultPrompt;
   const primaryModel = getPrimaryModelFromOverride(override);
 
   return {
@@ -388,7 +392,9 @@ export function createAgents(
 
       const override = getAgentOverride(config, name);
       const inlinePrompt = override?.prompt;
-      const defaultPrompt = agent.config.prompt ?? '';
+      const defaultPrompt = appendTaskRejectionInstruction(
+        agent.config.prompt ?? '',
+      );
 
       const basePrompt =
         inlinePrompt !== undefined ? inlinePrompt : defaultPrompt;
@@ -507,6 +513,12 @@ export function createAgents(
     ...acpSubAgents,
     ...councillorAgents,
   ];
+
+  for (const agent of [...acpSubAgents, ...councillorAgents]) {
+    agent.config.prompt = appendTaskRejectionInstruction(
+      agent.config.prompt ?? '',
+    );
+  }
 
   // 3. Create Orchestrator (with its own overrides and custom prompts)
   // DEFAULT_MODELS.orchestrator is undefined; model is resolved via override or
