@@ -1722,6 +1722,79 @@ describe('task-session-manager hook', () => {
     expect(job?.resultSummary).toBe('connection refused');
   });
 
+  test('child session.error (non-orchestrator) records failure on board', async () => {
+    const board = new BackgroundJobBoard();
+    // Child subagent sessions are not orchestrators, so shouldManageSession
+    // returns false for them. The error must still land on the board,
+    // otherwise idle reconciliation marks the job completed (false success).
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: () => false,
+    });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'designer',
+      description: 'design ui',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.error',
+        properties: {
+          sessionID: 'child-1',
+          error: {
+            name: 'AI_APICallError',
+            message: 'Internal server error',
+          },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('error');
+    expect(job?.resultSummary).toBe('Internal server error');
+  });
+
+  test('child session.error during fallback is not recorded on board', async () => {
+    const board = new BackgroundJobBoard();
+    // isFallbackInProgress is currently always-false for real children
+    // (they have no fallback chain), so this guard path is unreachable in
+    // production today. The test pins the defensive behavior for the day
+    // children gain a fallback chain.
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: () => false,
+      isFallbackInProgress: () => true,
+    });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'designer',
+      description: 'design ui',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.error',
+        properties: {
+          sessionID: 'child-1',
+          error: {
+            name: 'AI_APICallError',
+            message: 'Internal server error',
+          },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('running');
+  });
+
   test('completed reconciled job appears reusable and resumes via task', async () => {
     const board = new BackgroundJobBoard();
     const { hook } = createHook({ backgroundJobBoard: board });

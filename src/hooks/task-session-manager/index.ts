@@ -1215,6 +1215,27 @@ export function createTaskSessionManagerHook(
               });
             }
           }
+        } else if (sessionId) {
+          // Child subagent sessions are not orchestrators, so the block
+          // above never runs for them. Without this, a failed background
+          // subagent leaves its job in `running` and the idle-reconciliation
+          // path (which has no shouldManageSession guard) marks it
+          // `completed` — a false success. A child with no fallback chain has
+          // nothing to retry into, so surface the failure on the board.
+          const props = input.event.properties as
+            | { error?: unknown }
+            | undefined;
+          if (options.isFallbackInProgress?.(sessionId)) return;
+          const job = backgroundJobBoard.get(sessionId);
+          if (job && job.state === 'running') {
+            backgroundJobBoard.updateStatus({
+              taskID: sessionId,
+              state: 'error',
+              resultSummary:
+                (props?.error as { message?: string } | undefined)?.message ??
+                'Session error',
+            });
+          }
         }
 
         return;
