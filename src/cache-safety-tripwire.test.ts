@@ -63,6 +63,10 @@ const ALLOWLIST = new Map<string, string>([
     'Date.now() records lastReadAt for internal recency ordering; formatted prompt output (background job board) is confined to the volatile trailing message.',
   ],
   [
+    'hooks/task-session-manager/index.ts',
+    'Date.now() captures idleObservedAt to detect post-idle busy recovery from foreground-fallback re-prompts; never serialized into prompt content.',
+  ],
+  [
     'hooks/image-hook.ts',
     'Date.now() throttles temp-image cleanup; extracted image paths are deterministic per part id.',
   ],
