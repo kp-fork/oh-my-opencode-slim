@@ -16,8 +16,8 @@ describe('orchestrator prompt', () => {
     const prompt = buildOrchestratorPrompt();
 
     expect(prompt).toContain('Treat `<task_rejection>` as a routing signal');
-    expect(prompt).toContain('inspect its `<reason>`');
-    expect(prompt).toContain('optional `<recommended_agent>`');
+    expect(prompt).toContain('inspect only its `<reason>`');
+    expect(prompt).not.toContain('recommended_agent');
     expect(prompt).toContain(
       'Never reissue an unchanged task to the same agent',
     );

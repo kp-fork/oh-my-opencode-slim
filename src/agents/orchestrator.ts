@@ -201,7 +201,7 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 - Prefer \`task(..., background: true)\` for delegated work that can run independently.
 - For work already chosen for delegation, launch independent specialist lanes in the background so the orchestrator stays unblocked and can reconcile results when they return.
 - Track each task's specialist, objective, task/session ID, and file/topic ownership.
-- Treat \`<task_rejection>\` as a routing signal: inspect its \`<reason>\` and optional \`<recommended_agent>\`, then reroute or clarify.
+- Treat \`<task_rejection>\` as a routing signal: inspect only its \`<reason>\`, then reroute or clarify.
 - Never reissue an unchanged task to the same agent after a rejection; adjust its scope or context before retrying.
 - Continue orchestration only on non-overlapping work; otherwise briefly report what was launched and stop.
 - Before local edits or another writer task, compare against running task scopes.
