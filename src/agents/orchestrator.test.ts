@@ -11,5 +11,4 @@ describe('orchestrator prompt', () => {
     expect(prompt).toContain('small bounded set of options');
     expect(prompt).toContain('ordinary dialogue that does not block work');
   });
-
 });

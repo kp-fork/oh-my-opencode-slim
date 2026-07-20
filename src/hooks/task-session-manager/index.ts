@@ -23,6 +23,8 @@ import {
   type MessagePart,
   type MessageWithParts,
 } from '../types';
+import { createContinuationTokenManager } from './continuation-token-manager';
+import { createInputWaitTracker } from './input-wait-tracker';
 import type { PendingTaskCall } from './pending-call-tracker';
 import { createPendingCallTracker } from './pending-call-tracker';
 import {
@@ -55,29 +57,6 @@ const IDLE_RECONCILE_DELAY_MS = 2_000;
 
 const CONTINUATION_NUDGE =
   'Continue coordinating the remaining incomplete todos. Do not finalize while work remains.';
-const IDLESS_INPUT_WAIT = Symbol('idless-input-wait');
-const INPUT_WAIT_ASK_EVENTS = {
-  'permission.asked': 'permission',
-  'question.asked': 'question',
-} as const;
-const INPUT_WAIT_RESOLUTION_EVENTS = {
-  'permission.replied': 'permission',
-  'question.replied': 'question',
-  'question.rejected': 'question',
-} as const;
-
-function isInputWaitAskEvent(
-  type: string,
-): type is keyof typeof INPUT_WAIT_ASK_EVENTS {
-  return Object.hasOwn(INPUT_WAIT_ASK_EVENTS, type);
-}
-
-function isInputWaitResolutionEvent(
-  type: string,
-): type is keyof typeof INPUT_WAIT_RESOLUTION_EVENTS {
-  return Object.hasOwn(INPUT_WAIT_RESOLUTION_EVENTS, type);
-}
-
 function djb2Hash(str: string): string {
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
@@ -159,10 +138,20 @@ export function createTaskSessionManagerHook(
     string,
     ReturnType<typeof setTimeout>
   >();
-  const continuationSessionTokens = new Map<string, symbol>();
-  const activeContinuationEvaluations = new Map<string, Set<symbol>>();
-  const continuationConsumed = new Set<string>();
-  const inputWaitsByParent = new Map<string, Set<string | symbol>>();
+  const continuationTokens = createContinuationTokenManager({
+    onInvalidateContinuation: (sessionID) => {
+      const timer = idleReconcileTimers.get(sessionID);
+      if (timer) {
+        clearTimeout(timer);
+        idleReconcileTimers.delete(sessionID);
+      }
+    },
+  });
+  const inputWaits = createInputWaitTracker({
+    shouldManageSession: options.shouldManageSession,
+    invalidateContinuation: (sessionID) =>
+      continuationTokens.invalidateContinuation(sessionID),
+  });
   const idleReconcileDelayMs =
     options.idleReconcileDelayMs ?? IDLE_RECONCILE_DELAY_MS;
 
@@ -175,94 +164,6 @@ export function createTaskSessionManagerHook(
   };
   const sessionSdk = (_ctx.client as unknown as { session?: SessionSdk })
     .session;
-
-  function getContinuationSessionToken(sessionID: string): symbol {
-    const existing = continuationSessionTokens.get(sessionID);
-    if (existing) return existing;
-
-    const token = Symbol(sessionID);
-    continuationSessionTokens.set(sessionID, token);
-    return token;
-  }
-
-  function isCurrentContinuation(
-    sessionID: string,
-    sessionToken: symbol,
-    evaluationToken?: symbol,
-  ): boolean {
-    return (
-      continuationSessionTokens.get(sessionID) === sessionToken &&
-      (evaluationToken === undefined ||
-        activeContinuationEvaluations.get(sessionID)?.has(evaluationToken) ===
-          true)
-    );
-  }
-
-  function invalidateContinuation(sessionID: string): void {
-    const timer = idleReconcileTimers.get(sessionID);
-    if (timer) {
-      clearTimeout(timer);
-      idleReconcileTimers.delete(sessionID);
-    }
-    continuationSessionTokens.delete(sessionID);
-    activeContinuationEvaluations.delete(sessionID);
-  }
-
-  function clearContinuation(sessionID: string): void {
-    invalidateContinuation(sessionID);
-    continuationConsumed.delete(sessionID);
-  }
-
-  function inputWaitKey(kind: 'permission' | 'question', requestID: string) {
-    return `${kind}:${requestID}`;
-  }
-
-  function hasInputWait(sessionID: string): boolean {
-    return (inputWaitsByParent.get(sessionID)?.size ?? 0) > 0;
-  }
-
-  function clearInputWaits(sessionID: string): void {
-    inputWaitsByParent.delete(sessionID);
-  }
-
-  function trackInputWait(event: {
-    type: string;
-    properties?: { id?: string; requestID?: string; sessionID?: string };
-  }): void {
-    const sessionID = event.properties?.sessionID;
-    if (!sessionID || !options.shouldManageSession(sessionID)) {
-      return;
-    }
-
-    if (isInputWaitAskEvent(event.type)) {
-      const requestID = event.properties?.id;
-      const waits =
-        inputWaitsByParent.get(sessionID) ?? new Set<string | symbol>();
-      if (!requestID) {
-        waits.add(IDLESS_INPUT_WAIT);
-        inputWaitsByParent.set(sessionID, waits);
-        invalidateContinuation(sessionID);
-        return;
-      }
-      const key = inputWaitKey(INPUT_WAIT_ASK_EVENTS[event.type], requestID);
-      waits.add(key);
-      inputWaitsByParent.set(sessionID, waits);
-      invalidateContinuation(sessionID);
-      return;
-    }
-
-    if (!isInputWaitResolutionEvent(event.type)) return;
-    const requestID = event.properties?.requestID;
-    if (!requestID) return;
-    const key = inputWaitKey(
-      INPUT_WAIT_RESOLUTION_EVENTS[event.type],
-      requestID,
-    );
-    const waits = inputWaitsByParent.get(sessionID);
-    if (!waits) return;
-    waits.delete(key);
-    if (waits.size === 0) clearInputWaits(sessionID);
-  }
 
   function isActiveStatus(
     status: Record<string, unknown>,
@@ -277,14 +178,18 @@ export function createTaskSessionManagerHook(
   ): Promise<void> {
     const evaluationToken = Symbol(parentSessionID);
     const activeEvaluations =
-      activeContinuationEvaluations.get(parentSessionID) ?? new Set<symbol>();
+      continuationTokens.evaluations.get(parentSessionID) ?? new Set<symbol>();
     activeEvaluations.add(evaluationToken);
-    activeContinuationEvaluations.set(parentSessionID, activeEvaluations);
+    continuationTokens.evaluations.set(parentSessionID, activeEvaluations);
 
     if (
-      continuationConsumed.has(parentSessionID) ||
-      hasInputWait(parentSessionID) ||
-      !isCurrentContinuation(parentSessionID, sessionToken, evaluationToken) ||
+      continuationTokens.consumed.has(parentSessionID) ||
+      inputWaits.hasInputWait(parentSessionID) ||
+      !continuationTokens.isCurrentContinuation(
+        parentSessionID,
+        sessionToken,
+        evaluationToken,
+      ) ||
       options.isFallbackInProgress?.(parentSessionID) ||
       backgroundJobBoard.hasTerminalUnreconciled(parentSessionID) ||
       !sessionSdk?.todo ||
@@ -294,7 +199,7 @@ export function createTaskSessionManagerHook(
     ) {
       activeEvaluations.delete(evaluationToken);
       if (activeEvaluations.size === 0) {
-        activeContinuationEvaluations.delete(parentSessionID);
+        continuationTokens.evaluations.delete(parentSessionID);
       }
       return;
     }
@@ -362,9 +267,9 @@ export function createTaskSessionManagerHook(
         !latestChildrenResponse.data.every(
           (child) => isObjectRecord(child) && typeof child.id === 'string',
         ) ||
-        continuationConsumed.has(parentSessionID) ||
-        hasInputWait(parentSessionID) ||
-        !isCurrentContinuation(
+        continuationTokens.consumed.has(parentSessionID) ||
+        inputWaits.hasInputWait(parentSessionID) ||
+        !continuationTokens.isCurrentContinuation(
           parentSessionID,
           sessionToken,
           evaluationToken,
@@ -386,9 +291,9 @@ export function createTaskSessionManagerHook(
       }
 
       if (
-        continuationConsumed.has(parentSessionID) ||
-        hasInputWait(parentSessionID) ||
-        !isCurrentContinuation(
+        continuationTokens.consumed.has(parentSessionID) ||
+        inputWaits.hasInputWait(parentSessionID) ||
+        !continuationTokens.isCurrentContinuation(
           parentSessionID,
           sessionToken,
           evaluationToken,
@@ -398,7 +303,7 @@ export function createTaskSessionManagerHook(
       ) {
         return;
       }
-      continuationConsumed.add(parentSessionID);
+      continuationTokens.consumed.add(parentSessionID);
       await sessionSdk.promptAsync({
         path: { id: parentSessionID },
         body: {
@@ -416,10 +321,10 @@ export function createTaskSessionManagerHook(
         },
       );
     } finally {
-      const evaluations = activeContinuationEvaluations.get(parentSessionID);
+      const evaluations = continuationTokens.evaluations.get(parentSessionID);
       evaluations?.delete(evaluationToken);
       if (evaluations?.size === 0) {
-        activeContinuationEvaluations.delete(parentSessionID);
+        continuationTokens.evaluations.delete(parentSessionID);
       }
     }
   }
@@ -427,15 +332,18 @@ export function createTaskSessionManagerHook(
   function scheduleIdleReconciliation(parentSessionID: string): void {
     if (
       idleReconcileTimers.has(parentSessionID) ||
-      hasInputWait(parentSessionID) ||
+      inputWaits.hasInputWait(parentSessionID) ||
       options.isFallbackInProgress?.(parentSessionID)
     ) {
       return;
     }
-    const sessionToken = getContinuationSessionToken(parentSessionID);
+    const sessionToken =
+      continuationTokens.getContinuationSessionToken(parentSessionID);
     const timer = setTimeout(() => {
       idleReconcileTimers.delete(parentSessionID);
-      if (!isCurrentContinuation(parentSessionID, sessionToken)) {
+      if (
+        !continuationTokens.isCurrentContinuation(parentSessionID, sessionToken)
+      ) {
         return;
       }
       const hadTerminalUnreconciled =
@@ -486,8 +394,7 @@ export function createTaskSessionManagerHook(
       backgroundJobBoard.updateStatus({
         taskID: sessionID,
         state: 'completed',
-        resultSummary:
-          'Background task completed (reconciled from idle event)',
+        resultSummary: 'Background task completed (reconciled from idle event)',
       });
       backgroundJobBoard.markReconciled(sessionID);
       taskContextTracker.pendingManagedTaskIds.delete(sessionID);
@@ -502,8 +409,8 @@ export function createTaskSessionManagerHook(
 
   if (options.coordinator) {
     options.coordinator.onSessionDeleted((sessionId) => {
-      clearContinuation(sessionId);
-      clearInputWaits(sessionId);
+      continuationTokens.clearContinuation(sessionId);
+      inputWaits.clearInputWaits(sessionId);
       const pendingChildIdle = childIdleReconcileTimers.get(sessionId);
       if (pendingChildIdle) {
         clearTimeout(pendingChildIdle);
@@ -805,8 +712,8 @@ export function createTaskSessionManagerHook(
       ) {
         return;
       }
-      invalidateContinuation(sessionID);
-      continuationConsumed.delete(sessionID);
+      continuationTokens.invalidateContinuation(sessionID);
+      continuationTokens.consumed.delete(sessionID);
     },
 
     'tool.execute.before': async (
@@ -1075,7 +982,7 @@ export function createTaskSessionManagerHook(
         };
       };
     }): Promise<void> => {
-      trackInputWait(input.event);
+      inputWaits.trackInputWait(input.event);
 
       if (input.event.type === 'session.created') {
         const info = input.event.properties?.info;
@@ -1140,14 +1047,14 @@ export function createTaskSessionManagerHook(
         childIdleReconcileTimers.clear();
         const continuationSessionIDs = new Set([
           ...idleReconcileTimers.keys(),
-          ...continuationSessionTokens.keys(),
-          ...activeContinuationEvaluations.keys(),
-          ...continuationConsumed,
-          ...inputWaitsByParent.keys(),
+          ...continuationTokens.sessionTokens.keys(),
+          ...continuationTokens.evaluations.keys(),
+          ...continuationTokens.consumed,
+          ...inputWaits.waitsByParent.keys(),
         ]);
         for (const sessionID of continuationSessionIDs) {
-          clearContinuation(sessionID);
-          clearInputWaits(sessionID);
+          continuationTokens.clearContinuation(sessionID);
+          inputWaits.clearInputWaits(sessionID);
         }
         return;
       }
@@ -1189,7 +1096,7 @@ export function createTaskSessionManagerHook(
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
         if (sessionId) {
-          invalidateContinuation(sessionId);
+          continuationTokens.invalidateContinuation(sessionId);
         }
         if (sessionId && options.shouldManageSession(sessionId)) {
           // Only clear injected terminal jobs for fatal errors.
@@ -1247,7 +1154,7 @@ export function createTaskSessionManagerHook(
         const statusType = (
           input.event.properties as { status?: { type?: string } } | undefined
         )?.status?.type;
-        if (sessionId) invalidateContinuation(sessionId);
+        if (sessionId) continuationTokens.invalidateContinuation(sessionId);
         if (statusType !== 'busy') {
           return;
         }
@@ -1296,8 +1203,8 @@ export function createTaskSessionManagerHook(
         input.event.properties?.info?.id || input.event.properties?.sessionID;
       if (!sessionId) return;
 
-      clearContinuation(sessionId);
-      clearInputWaits(sessionId);
+      continuationTokens.clearContinuation(sessionId);
+      inputWaits.clearInputWaits(sessionId);
 
       log('[task-session-manager] session.deleted observed', {
         sessionID: sessionId,
