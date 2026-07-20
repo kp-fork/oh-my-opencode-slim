@@ -495,7 +495,6 @@ export class BackgroundJobBoard implements BackgroundJobStore {
       [
         '### Background Job Board',
         'SENTINEL: background-job-board-v2',
-        'Do not poll running jobs. Wait for hook-driven completion, or use cancel_task only for explicit cancellation. Reconcile terminal jobs before final response.',
         'Completed or reconciled sessions are reusable by alias for the same specialist/context.',
         'Timed-out running sessions are recoverable by alias for safe resume after a live busy signal.',
         'Cancelled or errored sessions are not reusable.',
