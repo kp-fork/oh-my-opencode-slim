@@ -984,7 +984,7 @@ describe('auto-update-checker/index', () => {
     const hook = createAutoUpdateCheckerHook(ctx as never);
     hook.event({ event: { type: 'session.created', properties: {} } });
 
-    await waitForCalls(logMock, 1);
+    await waitForCalls(skillSyncMocks.syncBundledSkillsFromPackage, 1);
 
     expect(skillSyncMocks.syncBundledSkillsFromPackage).toHaveBeenCalledWith(
       '/tmp/opencode',
