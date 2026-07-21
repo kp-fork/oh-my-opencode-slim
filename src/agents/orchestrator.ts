@@ -113,11 +113,13 @@ const PARALLEL_DELEGATION_EXAMPLES = [
 /**
  * Build the orchestrator prompt with dynamic agent filtering.
  * @param disabledAgents - Set of disabled agent names to exclude from the prompt
+ * @param waitForUserEnabled - Whether explicit text-only HITL waiting is available
  * @returns The complete orchestrator prompt string
  */
 export function buildOrchestratorPrompt(
   disabledAgents?: Set<string>,
   excludeDescriptions?: string[],
+  waitForUserEnabled = true,
 ): string {
   // Filter agent descriptions
   const enabledAgents = Object.entries(AGENT_DESCRIPTIONS)
@@ -134,6 +136,10 @@ export function buildOrchestratorPrompt(
       return mentions.every((name) => !disabledAgents?.has(name));
     },
   ).join('\n');
+
+  const externalManualWaitInstruction = waitForUserEnabled
+    ? '- When work must pause while the user completes an external manual operation, first give the user concrete manual steps, then call `wait_for_user` as your final tool action and end the turn. Do not rely on ordinary text alone to mark this waiting state, and do not call more tools after `wait_for_user`.'
+    : '- When work must pause while the user completes an external manual operation, first give the user concrete manual steps, then use the `question` tool as the blocking boundary and ask them to respond when finished. `wait_for_user` is disabled, so do not reference or call it.';
 
   return `<Role>
 You are a workflow manager for coding work. Your job is to plan, schedule, delegate, monitor, reconcile, and verify specialist-agent work. You are not the default implementation worker.
@@ -241,7 +247,8 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 - If request is vague or has multiple valid interpretations, ask a targeted question before proceeding
 - Don't guess at critical details (file paths, API choices, architectural decisions)
 - Do make reasonable assumptions for minor details and state them briefly
-- When user input is required before work can continue—including clarification, permission, or command output—use the \`question\` tool rather than leaving an ordinary assistant prompt waiting. Enable custom input, request a concise pasted response or command output, and provide a small bounded set of options whenever the tool schema requires options.
+- When user input is required before work can continue and the user can answer immediately—including clarification, permission, a choice, or pasted command output—use the \`question\` tool. Enable custom input, request a concise pasted response or command output, and provide a small bounded set of options whenever the tool schema requires options.
+${externalManualWaitInstruction}
 - For ordinary dialogue that does not block work, answer normally and do not use the question tool gratuitously.
 
 ## Concise Execution
@@ -278,10 +285,12 @@ export function createOrchestratorAgent(
   customAppendPrompt?: string,
   disabledAgents?: Set<string>,
   excludeDescriptions?: string[],
+  waitForUserEnabled = true,
 ): AgentDefinition {
   const basePrompt = buildOrchestratorPrompt(
     disabledAgents,
     excludeDescriptions,
+    waitForUserEnabled,
   );
   const prompt = resolvePrompt(basePrompt, customPrompt, customAppendPrompt);
 

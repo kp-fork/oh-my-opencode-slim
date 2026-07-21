@@ -1,3 +1,8 @@
+import {
+  beginUserWait as beginSharedUserWait,
+  hasUserWait,
+} from './continuation-attempt-gate';
+
 const IDLESS_INPUT_WAIT = Symbol('idless-input-wait');
 const INPUT_WAIT_ASK_EVENTS = {
   'permission.asked': 'permission',
@@ -32,7 +37,20 @@ export function createInputWaitTracker(options: {
   const inputWaitsByParent = new Map<string, Set<string | symbol>>();
 
   function hasInputWait(sessionID: string): boolean {
-    return (inputWaitsByParent.get(sessionID)?.size ?? 0) > 0;
+    return (
+      hasUserWait(sessionID) ||
+      (inputWaitsByParent.get(sessionID)?.size ?? 0) > 0
+    );
+  }
+
+  function beginUserWait(sessionID: string): void {
+    if (!options.shouldManageSession(sessionID)) {
+      throw new Error(
+        'wait_for_user can only begin in an orchestrator session',
+      );
+    }
+    beginSharedUserWait(sessionID);
+    options.invalidateContinuation(sessionID);
   }
 
   function clearInputWaits(sessionID: string): void {
@@ -79,6 +97,7 @@ export function createInputWaitTracker(options: {
   }
 
   return {
+    beginUserWait,
     trackInputWait,
     hasInputWait,
     clearInputWaits,

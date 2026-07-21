@@ -61,6 +61,7 @@ import {
   ast_grep_search,
   createAcpRunTool,
   createCancelTaskTool,
+  createWaitForUserTool,
   createWebfetchTool,
 } from './tools';
 import { recordTuiAgentModel, recordTuiAgentModels } from './tui-state';
@@ -101,10 +102,28 @@ async function appLog(
 const HEALTH_CHECK = {
   minAgents: 5,
   // Default tool set when council and ACP agents are not configured:
-  // cancel_task, webfetch, ast_grep_search, ast_grep_replace.
-  minTools: 4,
+  // cancel_task, wait_for_user, webfetch, ast_grep_search, ast_grep_replace.
+  minTools: 5,
   minMcps: 1,
 } as const;
+
+const BASELINE_TOOL_NAMES = new Set([
+  'cancel_task',
+  'wait_for_user',
+  'webfetch',
+  'ast_grep_search',
+  'ast_grep_replace',
+]);
+
+/** @internal Exposed for deterministic health-threshold tests. */
+export function minimumExpectedToolCount(
+  disabledTools: readonly string[] = [],
+): number {
+  const disabledBaselineTools = new Set(
+    disabledTools.filter((toolName) => BASELINE_TOOL_NAMES.has(toolName)),
+  );
+  return HEALTH_CHECK.minTools - disabledBaselineTools.size;
+}
 
 /**
  * Probe jsdom at init time so the first webfetch call doesn't fail
@@ -179,6 +198,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let interviewManager: ReturnType<typeof createInterviewManager>;
   let companionManager: CompanionManager;
   let cancelTaskTools: ReturnType<typeof createCancelTaskTool>;
+  let waitForUserTools: ReturnType<typeof createWaitForUserTool>;
   let acpRunTools: Record<string, ReturnType<typeof createAcpRunTool>>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
   let tools: Record<string, ToolDefinition>;
@@ -420,9 +440,20 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
     });
+    waitForUserTools = createWaitForUserTool({
+      shouldManageSession: (sessionID) =>
+        sessionAgentMap.get(sessionID) === 'orchestrator',
+      resolveAgentName: (agent) => resolveRuntimeAgentName(config, agent),
+      registerSessionAsOrchestrator: (sessionID) => {
+        sessionAgentMap.set(sessionID, 'orchestrator');
+      },
+      beginUserWait: (sessionID) =>
+        taskSessionManagerHook.beginUserWait(sessionID),
+    });
 
     tools = {
       ...cancelTaskTools,
+      ...waitForUserTools,
       ...acpRunTools,
       webfetch,
       ast_grep_search,
@@ -456,16 +487,17 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     config.disabled_mcps && config.disabled_mcps.length > 0
       ? 0
       : HEALTH_CHECK.minMcps;
+  const toolThreshold = minimumExpectedToolCount(config.disabled_tools);
 
   if (
     agentCount < HEALTH_CHECK.minAgents ||
-    toolCount < HEALTH_CHECK.minTools ||
+    toolCount < toolThreshold ||
     mcpCount < mcpThreshold
   ) {
     const msg = [
       'Health check: registrations suspiciously low.',
       `  agents: ${agentCount} (expected >=${HEALTH_CHECK.minAgents})`,
-      `  tools:  ${toolCount} (expected >=${HEALTH_CHECK.minTools})`,
+      `  tools:  ${toolCount} (expected >=${toolThreshold})`,
       `  mcps:   ${mcpCount} (expected >=${mcpThreshold})`,
       'This usually means a dependency failed to resolve (jsdom, etc).',
       'If you recently updated opencode, see:',

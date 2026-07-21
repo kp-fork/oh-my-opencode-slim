@@ -4042,6 +4042,380 @@ describe('task-session-manager hook', () => {
     expect(promptAsync).not.toHaveBeenCalled();
   });
 
+  test('does not evaluate or nudge after wait_for_user requests text-only HITL', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('a distinct external user message releases wait_for_user', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    hook.observeChatMessage(
+      { sessionID: 'parent-1', messageID: 'msg-user-resumes' },
+      {
+        message: {
+          id: 'msg-user-resumes',
+          role: 'user',
+          sessionID: 'parent-1',
+        },
+        parts: [{ type: 'text', text: 'The manual step is complete.' }],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('a duplicate external message cannot clear a newer user wait', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+    const previousUserMessage = {
+      input: { sessionID: 'parent-1', messageID: 'msg-before-wait' },
+      output: {
+        message: {
+          id: 'msg-before-wait',
+          role: 'user' as const,
+          sessionID: 'parent-1',
+        },
+        parts: [{ type: 'text', text: 'Start the long task.' }],
+      },
+    };
+
+    hook.observeChatMessage(
+      previousUserMessage.input,
+      previousUserMessage.output,
+    );
+    hook.beginUserWait('parent-1');
+    hook.observeChatMessage(
+      previousUserMessage.input,
+      previousUserMessage.output,
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('synthetic and internal messages do not clear wait_for_user', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    hook.observeChatMessage(
+      { sessionID: 'parent-1', messageID: 'msg-internal' },
+      {
+        message: {
+          id: 'msg-internal',
+          role: 'user',
+          sessionID: 'parent-1',
+        },
+        parts: [
+          { type: 'text', synthetic: true, text: 'synthetic continuation' },
+          createInternalAgentTextPart('internal continuation'),
+        ],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('a foreground-fallback replay marker does not clear wait_for_user', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    hook.observeChatMessage(
+      { sessionID: 'parent-1', messageID: 'msg-fallback-replay' },
+      {
+        message: {
+          id: 'msg-fallback-replay',
+          role: 'user',
+          sessionID: 'parent-1',
+        },
+        parts: [
+          { type: 'text', text: 'Start the long task.' },
+          createInternalAgentTextPart('foreground fallback replay'),
+        ],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('wait_for_user cancels a scheduled continuation before SDK reads', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const children = mock(async () => ({ data: [] }));
+    const status = mock(async () => ({ data: {} }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: { todo, children, status, promptAsync },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    hook.beginUserWait('parent-1');
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(children).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('wait_for_user invalidates an in-flight continuation evaluation', async () => {
+    let resolveTodo!: (value: { data: { status: string }[] }) => void;
+    const todo = mock(
+      () =>
+        new Promise<{ data: { status: string }[] }>((resolveTodoRequest) => {
+          resolveTodo = resolveTodoRequest;
+        }),
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).toHaveBeenCalledTimes(1);
+
+    hook.beginUserWait('parent-1');
+    resolveTodo({ data: [{ status: 'pending' }] });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('a user wait from another hook revokes an in-flight shared reservation', async () => {
+    let resolveTodo!: (value: { data: { status: string }[] }) => void;
+    const todo = mock(
+      () =>
+        new Promise<{ data: { status: string }[] }>((resolveTodoRequest) => {
+          resolveTodo = resolveTodoRequest;
+        }),
+    );
+    const promptAsync = mock(async () => ({}));
+    const sessionClient = {
+      todo,
+      children: mock(async () => ({ data: [] })),
+      status: mock(async () => ({ data: {} })),
+      promptAsync,
+    };
+    const owner = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient,
+    }).hook;
+    const waiter = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient,
+    }).hook;
+
+    await owner.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).toHaveBeenCalledTimes(1);
+
+    waiter.beginUserWait('parent-1');
+    resolveTodo({ data: [{ status: 'pending' }] });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('external user input clears only the explicit wait while a question remains', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    hook.observeChatMessage(
+      { sessionID: 'parent-1', messageID: 'msg-user-replied' },
+      {
+        message: {
+          id: 'msg-user-replied',
+          role: 'user',
+          sessionID: 'parent-1',
+        },
+        parts: [{ type: 'text', text: 'Manual work is done.' }],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('user waits survive hook disposal and clear on genuine deletion', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const sessionClient = {
+      todo,
+      children: mock(async () => ({ data: [] })),
+      status: mock(async () => ({ data: {} })),
+      promptAsync,
+    };
+    const makeHook = () =>
+      createHook({ idleReconcileDelayMs: 0, sessionClient }).hook;
+    const owner = makeHook();
+
+    owner.beginUserWait('parent-1');
+    await owner.event({ event: { type: 'server.instance.disposed' } });
+    const replacement = makeHook();
+    await replacement.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await replacement.event({
+      event: { type: 'session.deleted', properties: { sessionID: 'parent-1' } },
+    });
+    const afterDeletion = makeHook();
+    await afterDeletion.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('fallback session deletion preserves wait_for_user', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    let fallbackInProgress = true;
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      isFallbackInProgress: () => fallbackInProgress,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    hook.beginUserWait('parent-1');
+    await hook.event({
+      event: { type: 'session.deleted', properties: { sessionID: 'parent-1' } },
+    });
+    fallbackInProgress = false;
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
   test('cancels a scheduled continuation when an input wait arrives before its timer fires', async () => {
     const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
     const children = mock(async () => ({ data: [] }));

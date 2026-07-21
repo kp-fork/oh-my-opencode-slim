@@ -192,6 +192,10 @@ export function createTaskSessionManagerHook(
   };
 
   return {
+    beginUserWait: (sessionID: string): void => {
+      inputWaits.beginUserWait(sessionID);
+    },
+
     observeChatMessage: (input: unknown, output: unknown): void => {
       const inputMessage = isObjectRecord(input) ? input : undefined;
       const outputRecord = isObjectRecord(output) ? output : undefined;
@@ -223,6 +227,7 @@ export function createTaskSessionManagerHook(
           outputMessage.role !== 'user') ||
         !options.shouldManageSession(sessionID) ||
         !Array.isArray(parts) ||
+        parts.some(isInternalInitiatorPart) ||
         !parts.some(
           (part) =>
             isObjectRecord(part) &&

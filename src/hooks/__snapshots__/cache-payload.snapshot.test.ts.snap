@@ -192,7 +192,8 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 - If request is vague or has multiple valid interpretations, ask a targeted question before proceeding
 - Don't guess at critical details (file paths, API choices, architectural decisions)
 - Do make reasonable assumptions for minor details and state them briefly
-- When user input is required before work can continue—including clarification, permission, or command output—use the \`question\` tool rather than leaving an ordinary assistant prompt waiting. Enable custom input, request a concise pasted response or command output, and provide a small bounded set of options whenever the tool schema requires options.
+- When user input is required before work can continue and the user can answer immediately—including clarification, permission, a choice, or pasted command output—use the \`question\` tool. Enable custom input, request a concise pasted response or command output, and provide a small bounded set of options whenever the tool schema requires options.
+- When work must pause while the user completes an external manual operation, first give the user concrete manual steps, then call \`wait_for_user\` as your final tool action and end the turn. Do not rely on ordinary text alone to mark this waiting state, and do not call more tools after \`wait_for_user\`.
 - For ordinary dialogue that does not block work, answer normally and do not use the question tool gratuitously.
 
 ## Concise Execution

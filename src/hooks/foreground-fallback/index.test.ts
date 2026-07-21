@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { isInternalInitiatorPart } from '../../utils';
 import { SessionLifecycle } from '../session-lifecycle';
 import {
   ForegroundFallbackManager,
@@ -243,6 +244,33 @@ describe('ForegroundFallbackManager session.error', () => {
     // Should have picked the next model after anthropic/claude-opus-4-5
     expect(call[0].body.model.providerID).toBe('openai');
     expect(call[0].body.model.modelID).toBe('gpt-4o');
+  });
+
+  test('marks the replayed user prompt as an internal initiator', async () => {
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-1',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+          role: 'assistant',
+        },
+      },
+    });
+
+    await mgr.handleEvent({
+      type: 'session.error',
+      properties: {
+        sessionID: 'sess-1',
+        error: { message: 'Rate limit exceeded' },
+      },
+    });
+
+    const call = mocks.promptAsync.mock.calls[0] as [
+      { body: { parts: unknown[] } },
+    ];
+    expect(call[0].body.parts.some(isInternalInitiatorPart)).toBe(true);
   });
 
   test('skips malformed messages without info when locating the last user message', async () => {
@@ -1296,6 +1324,25 @@ describe('ForegroundFallbackManager session.deleted', () => {
     // inProgress must survive — the finally block of tryFallback/WithAbort
     // manages it, not the session.deleted callback
     expect(mgr.isFallbackInProgress(sessionID)).toBe(true);
+    (mgr as any).inProgress.delete(sessionID);
+  });
+
+  test('shares fallback progress across plugin manager instances', () => {
+    const first = new ForegroundFallbackManager(
+      createMockClient().client,
+      makeChains(),
+      true,
+    );
+    const replacement = new ForegroundFallbackManager(
+      createMockClient().client,
+      makeChains(),
+      true,
+    );
+    const sessionID = 'sess-shared-in-progress';
+
+    (first as any).inProgress.add(sessionID);
+    expect(replacement.isFallbackInProgress(sessionID)).toBe(true);
+    (first as any).inProgress.delete(sessionID);
   });
 });
 

@@ -11,4 +11,25 @@ describe('orchestrator prompt', () => {
     expect(prompt).toContain('small bounded set of options');
     expect(prompt).toContain('ordinary dialogue that does not block work');
   });
+
+  test('requires wait_for_user for external manual work', () => {
+    const prompt = buildOrchestratorPrompt();
+
+    expect(prompt).toContain('call `wait_for_user` as your final tool action');
+    expect(prompt).toContain('give the user concrete manual steps');
+    expect(prompt).toContain('end the turn');
+    expect(prompt).toContain('Do not rely on ordinary text alone');
+  });
+
+  test('falls back to question when wait_for_user is disabled', () => {
+    const prompt = buildOrchestratorPrompt(undefined, undefined, false);
+
+    expect(prompt).not.toContain(
+      'call `wait_for_user` as your final tool action',
+    );
+    expect(prompt).toContain('`wait_for_user` is disabled');
+    expect(prompt).toContain(
+      'use the `question` tool as the blocking boundary',
+    );
+  });
 });

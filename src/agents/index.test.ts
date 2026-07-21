@@ -192,6 +192,15 @@ describe('orchestrator agent', () => {
     ).toBe('allow');
   });
 
+  test('orchestrator is allowed to invoke wait_for_user', () => {
+    const agents = createAgents();
+    const orchestrator = agents.find((a) => a.name === 'orchestrator');
+    expect(
+      (orchestrator as { config: { permission: Record<string, unknown> } })
+        .config.permission.wait_for_user,
+    ).toBe('allow');
+  });
+
   test('orchestrator accepts overrides', () => {
     const config: PluginConfig = {
       agents: {
@@ -361,6 +370,18 @@ describe('tool permissions', () => {
       (fixer as { config: { permission: Record<string, unknown> } }).config
         .permission.cancel_task,
     ).toBe('deny');
+  });
+
+  test('subagents are denied access to wait_for_user', () => {
+    const agents = createAgents();
+
+    for (const name of ['oracle', 'explorer', 'fixer']) {
+      const agent = agents.find((candidate) => candidate.name === name);
+      expect(
+        (agent as { config: { permission: Record<string, unknown> } }).config
+          .permission.wait_for_user,
+      ).toBe('deny');
+    }
   });
 
   test('council agent has synthesis-only (deny-all) permissions', () => {

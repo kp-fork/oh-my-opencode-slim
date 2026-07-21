@@ -18,6 +18,7 @@
  */
 
 import type { PluginInput } from '@opencode-ai/plugin';
+import { createInternalAgentTextPart } from '../../utils/internal-initiator';
 import { log } from '../../utils/logger';
 import {
   abortSessionWithTimeout,
@@ -183,6 +184,17 @@ export function isRateLimitError(error: unknown): boolean {
 /** Prevent re-triggering within this window for the same session. */
 const DEDUP_WINDOW_MS = 5_000;
 const REPROMPT_DELAY_MS = 500;
+const FALLBACK_IN_PROGRESS_KEY = Symbol.for(
+  'oh-my-opencode-slim.foreground-fallback.in-progress',
+);
+
+function getProcessFallbacksInProgress(): Set<string> {
+  const globalWithStore = globalThis as typeof globalThis & {
+    [FALLBACK_IN_PROGRESS_KEY]?: Set<string>;
+  };
+  globalWithStore[FALLBACK_IN_PROGRESS_KEY] ??= new Set();
+  return globalWithStore[FALLBACK_IN_PROGRESS_KEY];
+}
 
 // ---------------------------------------------------------------------------
 // Manager
@@ -201,8 +213,8 @@ export class ForegroundFallbackManager {
   private readonly sessionAgent = new Map<string, string>();
   /** sessionID → set of models already attempted this session */
   private readonly sessionTried = new Map<string, Set<string>>();
-  /** Sessions with an active fallback switch in flight */
-  private readonly inProgress = new Set<string>();
+  /** Process-local sessions with an active fallback switch in flight. */
+  private readonly inProgress = getProcessFallbacksInProgress();
   /** sessionID → timestamp of last trigger (for deduplication) */
   private readonly lastTrigger = new Map<string, number>();
   /** sessionID → model in use when lastTrigger was set; dedup is bypassed
@@ -633,7 +645,10 @@ export class ForegroundFallbackManager {
       }
 
       const promptBody = {
-        parts: lastUser.parts,
+        parts: [
+          ...lastUser.parts,
+          createInternalAgentTextPart('Foreground fallback replay.'),
+        ],
         model: ref,
         ...(agentName ? { agent: agentName } : {}),
       };

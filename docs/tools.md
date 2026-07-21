@@ -39,15 +39,23 @@ Fast, structural code search and refactoring - more powerful than plain text gre
 | Tool | Description |
 |------|-------------|
 | `cancel_task` | Cancel a tracked background specialist task by native task ID or Background Job Board alias |
+| `wait_for_user` | Pause automatic incomplete-todo continuation until the next distinct external user message |
 
 `cancel_task` is orchestrator-only. It only cancels background tasks tracked for
 the current orchestrator session, and it does not roll back partial edits. After
 cancelling a write-capable task, inspect and reconcile file changes before
 launching replacement work.
 
+`wait_for_user` is also orchestrator-only. The orchestrator uses it as the final
+tool action after providing concrete instructions for external manual work. Its
+`reason` is diagnostic text only; the plugin does not parse assistant prose to
+decide whether a turn is HITL. A new real user text/file/image message clears the
+wait. Synthetic/internal messages and duplicate delivery of the user message
+that preceded the wait do not.
+
 See the background orchestration concepts in
 [Background Orchestration](background-orchestration.md) for the session
-lifecycle and cancellation edge cases behind this tool.
+lifecycle, cancellation, and explicit-wait edge cases behind these tools.
 
 ---
 

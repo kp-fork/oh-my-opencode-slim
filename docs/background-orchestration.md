@@ -37,6 +37,7 @@ The required native/background-control tools are:
 | `task(..., background: true)` | Start a specialist in the background and immediately return a task ID |
 | hook-driven completion | OpenCode injects terminal background task results automatically |
 | `cancel_task` | Plugin-provided tool to cancel a tracked background task by task ID or Background Job Board alias |
+| `wait_for_user` | Plugin-provided orchestrator tool that pauses automatic continuation while the user performs external manual work |
 
 If these are not available, the scheduler cannot use the default background
 workflow. Configure the environment variable through the installer or use the
@@ -345,18 +346,32 @@ prompts and todo updates do not rearm.
 Continuation is suppressed when the SDK reports the parent or any direct child
 as active, when a terminal child result has not yet been reconciled, during
 foreground fallback, while OpenCode is waiting for a question or permission
-response, or whenever SDK data is unavailable or malformed. A matching reply, or
-a rejected question, clears that wait but does not itself inject a nudge; the
-normal session lifecycle decides whether a later nudge is needed.
+response, after the orchestrator calls `wait_for_user`, or whenever SDK data is
+unavailable or malformed. A matching reply, or a rejected question, clears its
+tool-backed wait but does not itself inject a nudge; the normal session lifecycle
+decides whether a later nudge is needed.
+
+For external manual work, the orchestrator first gives the user concrete steps,
+then calls `wait_for_user` as its final tool action. This explicit signal covers
+text-only HITL turns without attempting to infer intent from assistant prose. The
+wait remains armed across hook/plugin recreation in the same process and is
+cleared only by a distinct real external user message or genuine session
+deletion. Re-observing the user message that preceded the wait, synthetic/internal
+messages (including foreground-fallback replays), fallback teardown, session
+errors, and idle/busy events do not clear it. Immediate choices, clarifications,
+and pasted command output continue to use the `question` tool. If
+`wait_for_user` is intentionally listed in `disabled_tools`, the orchestrator
+uses the `question` tool as the blocking boundary instead.
 
 This is a best-effort runtime check, not a scheduler or persisted state. The
-one-attempt guard is process-local (shared across hook instances in the same JS
-process via an internal gate). It does not survive process restart or
-cross-process boundaries. Recreating a hook/plugin instance inside the same
-process does **not** rearm a consumed epoch; only a real external user message
-(or genuine session deletion) does. After a process restart, the in-memory job
-board cannot establish prior result reconciliation, and the SDK's current
-session/todo status remains the liveness authority.
+one-attempt guard and explicit `wait_for_user` state are process-local (shared
+across hook instances in the same JS process via an internal gate). They do not
+survive process restart or cross-process boundaries. Recreating a hook/plugin
+instance inside the same process does **not** rearm a consumed or waiting epoch;
+only a distinct real external user message (or genuine session deletion) does.
+After a process restart, the in-memory job board cannot establish prior result
+reconciliation, and the SDK's current session/todo status remains the liveness
+authority.
 
 ### Background Job Board Injection
 

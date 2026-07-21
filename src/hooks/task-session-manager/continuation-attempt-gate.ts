@@ -8,7 +8,8 @@
 
 type AttemptState =
   | { status: 'reserved'; owner: symbol }
-  | { status: 'consumed' };
+  | { status: 'consumed' }
+  | { status: 'waiting-for-user' };
 
 type RearmIdentity = string | symbol;
 
@@ -35,6 +36,21 @@ function getStore(): ContinuationAttemptStore {
     messageObjectIdentity: new WeakMap(),
   };
   return globalWithStore[STORE_KEY];
+}
+
+/**
+ * Block continuation for a text-only HITL boundary until a distinct real
+ * external user message opens the next continuation epoch.
+ *
+ * Deleting an existing attempt also revokes an in-flight reservation: its
+ * owner can no longer commit a prompt after this wait begins.
+ */
+export function beginUserWait(sessionID: string): void {
+  getStore().attempts.set(sessionID, { status: 'waiting-for-user' });
+}
+
+export function hasUserWait(sessionID: string): boolean {
+  return getStore().attempts.get(sessionID)?.status === 'waiting-for-user';
 }
 
 function resolveRearmIdentity(identity: string | object): RearmIdentity {

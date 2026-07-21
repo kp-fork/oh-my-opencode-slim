@@ -303,11 +303,16 @@ function applyDefaultPermissions(
   const cancelTaskPerm = CANCEL_TASK_ALLOWED_AGENTS.has(agent.name)
     ? (existing.cancel_task ?? 'allow')
     : 'deny';
+  const waitForUserPerm =
+    agent.name === 'orchestrator'
+      ? (existing.wait_for_user ?? 'allow')
+      : 'deny';
 
   agent.config.permission = {
     ...existing,
     question: questionPerm,
     cancel_task: cancelTaskPerm,
+    wait_for_user: waitForUserPerm,
     // Apply skill permissions as nested object under 'skill' key
     skill: {
       ...(typeof existing.skill === 'object' ? existing.skill : {}),
@@ -536,6 +541,7 @@ export function createAgents(
     undefined,
     disabled,
     councillorAgents.length > 0 ? ['council'] : undefined,
+    !config?.disabled_tools?.includes('wait_for_user'),
   );
 
   const inlineOrchestratorPrompt = orchestratorOverride?.prompt;
