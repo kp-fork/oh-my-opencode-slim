@@ -31,6 +31,13 @@ export const FIXTURE_NOW = 1_700_000_000_000;
 
 export type TransformOutput = { messages: unknown[] };
 
+export type BoardStrategy = 'latest' | 'checkpoint-compatible';
+
+export interface PipelineOptions {
+  /** Board injection strategy under test; defaults to the production default. */
+  strategy?: BoardStrategy;
+}
+
 export interface Pipeline {
   run: (output: TransformOutput) => Promise<void>;
   markFileToolPending: () => void;
@@ -42,7 +49,7 @@ export interface Pipeline {
  * cache-safety.property.test.ts fails when the two fall out of sync — update
  * BOTH when adding, removing, or reordering a transform step.
  */
-export function createPipeline(): Pipeline {
+export function createPipeline(options: PipelineOptions = {}): Pipeline {
   const sessionAgentMap = new Map<string, string>();
   const board = new BackgroundJobBoard();
   const lifecycle = new SessionLifecycle(() => {});
@@ -67,6 +74,7 @@ export function createPipeline(): Pipeline {
     {
       maxSessionsPerAgent: 2,
       maxRetainedSnapshots: DEFAULT_MAX_RETAINED_SNAPSHOTS,
+      ...(options.strategy ? { strategy: options.strategy } : {}),
       backgroundJobBoard: board,
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
