@@ -1,8 +1,4 @@
-import {
-  type PluginInput,
-  type ToolDefinition,
-  tool,
-} from '@opencode-ai/plugin';
+import { type ToolDefinition, tool } from '@opencode-ai/plugin';
 import type { BackgroundJobStore } from '../utils/background-job-store';
 import { log } from '../utils/logger';
 
