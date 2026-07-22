@@ -13,6 +13,7 @@ import {
   injectBackgroundJobBoard,
   MAX_PROCESSED_INJECTED_COMPLETIONS,
   reconcileInjectedTerminalJobs,
+  stabilizeRunningTaskParts,
   updateFromInjectedCompletion,
 } from './board-injection';
 import { evaluateContinuation as evaluateContinuationFn } from './continuation-evaluator';
@@ -271,6 +272,11 @@ export function createTaskSessionManagerHook(
       output: { messages?: unknown },
     ): Promise<void> => {
       const messages = Array.isArray(output.messages) ? output.messages : [];
+
+      // Keep still-running task tool results byte-stable so a live background
+      // lane never rewrites mid-history bytes and invalidates the prompt
+      // cache. Terminal results are left untouched (they materialize once).
+      stabilizeRunningTaskParts(messages);
 
       for (const [messageIndex, message] of messages.entries()) {
         if (!isUserMessageWithParts(message)) continue;

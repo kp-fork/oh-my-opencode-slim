@@ -12,7 +12,12 @@ import type {
   BackgroundJobStore,
   ContextFile,
 } from '../../utils';
-import { isInternalInitiatorPart, parseTaskStatusOutput } from '../../utils';
+import {
+  isInternalInitiatorPart,
+  parseTaskStatusOutput,
+  renderRunningTaskPlaceholder,
+} from '../../utils';
+import { isRecord } from '../../utils/guards';
 import { log } from '../../utils/logger';
 import {
   appendTrailingVolatileMessage,
@@ -110,6 +115,53 @@ function createOccurrenceId(
 }
 
 // ── Exported functions ─────────────────────────────────────────────────
+
+/**
+ * Normalize the `output` of every still-running `task` tool result to a
+ * static, deterministic placeholder keyed only on the task ID.
+ *
+ * OpenCode core stores a fixed running placeholder in `state.output` when a
+ * background task launches and materializes the terminal result separately as
+ * a synthetic completion message. However, the runtime is free to stream live
+ * child progress into a running task part's `state.output` (foreground
+ * promotion, future core versions). Any such mid-history mutation invalidates
+ * the provider prompt cache from that byte onward, re-writing the entire tail
+ * every request while a background lane runs (write-never-read loop).
+ *
+ * This makes running task parts byte-stable at the plugin layer: it only ever
+ * touches parts whose parsed state is `running`, so terminal
+ * (completed/error/cancelled) results — which must reach the orchestrator
+ * intact and mutate exactly once on completion — are never altered. It is a
+ * pure normalization: re-running it on an already-stabilized part is a no-op.
+ * Foreground (`wait:true`) tasks block and return a terminal state, so their
+ * parts are never running here and keep their real output.
+ */
+export function stabilizeRunningTaskParts(messages: unknown[]): void {
+  for (const message of messages) {
+    if (!isMessageWithParts(message)) continue;
+    for (const part of message.parts) {
+      if (part.type !== 'tool' || part.tool !== 'task') continue;
+      const state = part.state;
+      if (!isRecord(state)) continue;
+      if (typeof state.output !== 'string') continue;
+
+      // Only running task results are volatile. Terminal results (completed,
+      // error, cancelled) are materialized exactly once and must stay intact.
+      const status = parseTaskStatusOutput(state.output);
+      const runningByStatus = status?.state === 'running';
+      const runningByField =
+        state.status === 'running' && (status === undefined || runningByStatus);
+      if (!runningByStatus && !runningByField) continue;
+
+      const taskID = status?.taskID;
+      if (!taskID) continue;
+
+      const placeholder = renderRunningTaskPlaceholder(taskID);
+      if (state.output === placeholder) continue;
+      state.output = placeholder;
+    }
+  }
+}
 
 export function updateFromInjectedCompletion(
   state: InjectionState,
