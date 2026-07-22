@@ -758,6 +758,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "shixi-li",
+      "name": "cyril",
+      "avatar_url": "https://avatars.githubusercontent.com/u/40780706?v=4",
+      "profile": "https://github.com/shixi-li",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "commitConvention": "angular"
