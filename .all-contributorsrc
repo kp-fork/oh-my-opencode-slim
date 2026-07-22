@@ -731,6 +731,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "Zhanyuanium",
+      "name": "Zhanyuanium",
+      "avatar_url": "https://avatars.githubusercontent.com/u/92024923?v=4",
+      "profile": "https://github.com/Zhanyuanium",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "commitConvention": "angular"
