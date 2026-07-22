@@ -27,7 +27,7 @@ Each tool is implemented as a factory function that returns a `ToolDefinition` r
 | Tool Family | Purpose | Key Components |
 |------------|---------|----------------|
 | **Council** | Multi-LLM consensus synthesis (orchestrator dispatches councillors as subagents) | `agents/council.ts`, `agents/index.ts` |
-| **Task Management** | Background task lifecycle and HITL continuation control | `cancel-task.ts`, `wait-for-user.ts`, `background-job-board.ts` |
+| **Task Management** | Background task lifecycle and HITL continuation control | `cancel-task.ts`, `reconcile-task.ts`, `wait-for-user.ts`, `background-job-board.ts` |
 | **ACP Integration** | External agent protocol execution | `acp-run.ts`, ACP client implementation |
 | **Code Intelligence** | AST-based code manipulation | `ast-grep/` directory, `tools.ts` |
 | **Web Fetching** | Intelligent web content retrieval | `smartfetch/` directory, `tool.ts` |
@@ -78,6 +78,17 @@ Each tool is implemented as a factory function that returns a `ToolDefinition` r
    ├─> Verifies session stopped via status polling
    ├─> Marks job as cancelled in BackgroundJobBoard
    └─> Returns cancellation confirmation
+```
+
+### Task Reconciliation Flow
+
+```
+1. Orchestrator invokes reconcile_task tool
+   ├─> Validates calling agent is 'orchestrator'
+   ├─> Resolves task_id/alias to BackgroundJobBoard entry
+   ├─> Validates job is terminal-unreconciled
+   ├─> Calls BackgroundJobBoard.markReconciled()
+   └─> Returns reconciliation confirmation
 ```
 
 ### Explicit User-Wait Flow
@@ -163,7 +174,8 @@ Each tool is implemented as a factory function that returns a `ToolDefinition` r
 ```
 Tools Layer → Background Layer
 ├─ cancel_task tool → BackgroundJobBoard.resolve() → abortSessionWithTimeout()
-└─> Returns cancellation status
+├─ reconcile_task tool → BackgroundJobBoard.resolve() → BackgroundJobBoard.markReconciled()
+└─> Returns reconciliation status
 
 Tools Layer → Config Layer
 ├─ acp_run tool → AcpAgentsConfig from config system
@@ -204,6 +216,7 @@ export { ast_grep_replace, ast_grep_search } from './ast-grep';
 
 // Task management
 export { createCancelTaskTool } from './cancel-task';
+export { createReconcileTaskTool } from './reconcile-task';
 export { createWaitForUserTool } from './wait-for-user';
 
 // Preset management
