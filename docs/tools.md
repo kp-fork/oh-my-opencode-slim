@@ -39,19 +39,12 @@ Fast, structural code search and refactoring - more powerful than plain text gre
 | Tool | Description |
 |------|-------------|
 | `cancel_task` | Cancel a tracked background specialist task by native task ID or Background Job Board alias |
-| `reconcile_task` | Mark a terminal (completed/error/cancelled) background task as reconciled so it no longer appears as unreconciled |
 | `wait_for_user` | Pause automatic incomplete-todo continuation until the next distinct external user message |
 
 `cancel_task` is orchestrator-only. It only cancels background tasks tracked for
 the current orchestrator session, and it does not roll back partial edits. After
 cancelling a write-capable task, inspect and reconcile file changes before
 launching replacement work.
-
-`reconcile_task` is orchestrator-only. It marks a terminal task as reconciled
-in the Background Job Board without invoking any specialist session. This is a
-state-only operation — use it before final response when a terminal result has
-been received and consumed. Idle-based auto-reconciliation also handles this
-when the orchestrator session goes idle.
 
 `wait_for_user` is also orchestrator-only. The orchestrator uses it as the final
 tool action after providing concrete instructions for external manual work. Its

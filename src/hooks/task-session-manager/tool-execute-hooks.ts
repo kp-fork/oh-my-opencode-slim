@@ -87,6 +87,46 @@ export async function handleToolExecuteBefore(
     agentType,
     label,
   };
+  if (typeof args.task_id === 'string' && args.task_id.trim() !== '') {
+    const requested = args.task_id.trim();
+    const remembered =
+      deps.backgroundJobBoard.resolveReusable(
+        input.sessionID,
+        requested,
+        agentType,
+      ) ??
+      deps.backgroundJobBoard.resolveRecoverable(
+        input.sessionID,
+        requested,
+        agentType,
+      );
+
+    if (!remembered) {
+      const knownManagedTask = deps.backgroundJobBoard.resolve(
+        input.sessionID,
+        requested,
+      );
+      if (knownManagedTask?.state === 'running') {
+        throw new Error(
+          `Task ${requested} is still running and cannot be resumed or amended with task(). Do not spawn or cancel a duplicate for an additive request. Wait for its terminal result, then resume the automatically reconciled session if follow-up work is still needed.`,
+        );
+      }
+
+      if (knownManagedTask) {
+        delete args.task_id;
+      } else if (RAW_SESSION_ID_PATTERN.test(requested)) {
+        pendingCall.resumedTaskId = requested;
+      } else {
+        delete args.task_id;
+      }
+    } else {
+      args.task_id = remembered.taskID;
+      deps.taskContextTracker.pendingManagedTaskIds.add(remembered.taskID);
+      deps.backgroundJobBoard.markUsed(input.sessionID, remembered.taskID);
+      pendingCall.resumedTaskId = remembered.taskID;
+    }
+  }
+
   deps.pendingCallTracker.add(pendingCall);
   log(
     '[task-session-manager] tool.execute.before task — pending call created',
@@ -99,48 +139,6 @@ export async function handleToolExecuteBefore(
       inputSessionID: input.sessionID,
     },
   );
-
-  if (typeof args.task_id !== 'string' || args.task_id.trim() === '') {
-    return;
-  }
-
-  const requested = args.task_id.trim();
-  const remembered =
-    deps.backgroundJobBoard.resolveReusable(
-      input.sessionID,
-      requested,
-      agentType,
-    ) ??
-    deps.backgroundJobBoard.resolveRecoverable(
-      input.sessionID,
-      requested,
-      agentType,
-    );
-
-  if (!remembered) {
-    const knownManagedTask = deps.backgroundJobBoard.resolve(
-      input.sessionID,
-      requested,
-    );
-    if (knownManagedTask) {
-      delete args.task_id;
-      return;
-    }
-
-    if (RAW_SESSION_ID_PATTERN.test(requested)) {
-      pendingCall.resumedTaskId = requested;
-      deps.pendingCallTracker.add(pendingCall);
-      return;
-    }
-    delete args.task_id;
-    return;
-  }
-
-  args.task_id = remembered.taskID;
-  deps.taskContextTracker.pendingManagedTaskIds.add(remembered.taskID);
-  deps.backgroundJobBoard.markUsed(input.sessionID, remembered.taskID);
-  pendingCall.resumedTaskId = remembered.taskID;
-  deps.pendingCallTracker.add(pendingCall);
 }
 
 export async function handleToolExecuteAfter(

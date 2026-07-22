@@ -37,7 +37,6 @@ The required native/background-control tools are:
 | `task(..., background: true)` | Start a specialist in the background and immediately return a task ID |
 | hook-driven completion | OpenCode injects terminal background task results automatically |
 | `cancel_task` | Plugin-provided tool to cancel a tracked background task by task ID or Background Job Board alias |
-| `reconcile_task` | Plugin-provided tool to mark a terminal task as reconciled in the Background Job Board (state-only, no specialist invocation) |
 | `wait_for_user` | Plugin-provided orchestrator tool that pauses automatic continuation while the user performs external manual work |
 
 If these are not available, the scheduler cannot use the default background
@@ -145,7 +144,7 @@ Rules:
 - Review tasks can run in parallel with read-only discovery, but not with edits
   they are supposed to review.
 
-### 4. Wait, cancel, and reconcile
+### 4. Wait and cancel
 
 Background tasks are not complete until OpenCode injects their terminal result or
 hook-driven completion marks them terminal.
@@ -159,19 +158,13 @@ The orchestrator should use background completion events to:
 
 The orchestrator should use `cancel_task` only when the user asks, or when a
 running lane is obsolete, wrong, or conflicts with a safer replacement plan.
-Cancellation is not rollback: if cancelling a writer, inspect and reconcile
-partial file changes before launching a replacement lane.
+Cancellation is not rollback: if cancelling a writer, inspect its partial file
+changes before launching a replacement lane.
 
-Before final response, use `reconcile_task` to mark any terminal jobs shown in
-the Background Job Board as reconciled. Idle-based auto-reconciliation also
-handles this when the orchestrator session goes idle, but explicit reconciliation
-via `reconcile_task` is preferred for deterministic state management.
-
-**Note on reconciliation:** Idle-based reconciliation is a heuristic. A job marked
-as reconciled means its terminal result was injected into an orchestrator turn
-that completed and the parent returned to idle; it is not proof the result was
-explicitly acknowledged or used. The orchestrator should still verify it consumed
-the relevant outputs before finalizing.
+Terminal jobs are reconciled automatically after their result is injected into
+the orchestrator session. That lifecycle state is not proof the output was used;
+the orchestrator must still verify it consumed the relevant result before
+finalizing.
 
 Specialist outputs are inputs, not final truth. The orchestrator reconciles them
 against each other and the original user goal.

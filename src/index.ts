@@ -61,7 +61,6 @@ import {
   ast_grep_search,
   createAcpRunTool,
   createCancelTaskTool,
-  createReconcileTaskTool,
   createWaitForUserTool,
   createWebfetchTool,
 } from './tools';
@@ -103,14 +102,13 @@ async function appLog(
 const HEALTH_CHECK = {
   minAgents: 5,
   // Default tool set when council and ACP agents are not configured:
-  // cancel_task, reconcile_task, wait_for_user, webfetch, ast_grep_search, ast_grep_replace.
+  // cancel_task, wait_for_user, webfetch, ast_grep_search, ast_grep_replace.
   minTools: 5,
   minMcps: 1,
 } as const;
 
 const BASELINE_TOOL_NAMES = new Set([
   'cancel_task',
-  'reconcile_task',
   'wait_for_user',
   'webfetch',
   'ast_grep_search',
@@ -200,7 +198,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let interviewManager: ReturnType<typeof createInterviewManager>;
   let companionManager: CompanionManager;
   let cancelTaskTools: ReturnType<typeof createCancelTaskTool>;
-  let reconcileTaskTools: ReturnType<typeof createReconcileTaskTool>;
   let waitForUserTools: ReturnType<typeof createWaitForUserTool>;
   let acpRunTools: Record<string, ReturnType<typeof createAcpRunTool>>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
@@ -443,11 +440,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
     });
-    reconcileTaskTools = createReconcileTaskTool({
-      backgroundJobBoard: backgroundJobCoordinator,
-      shouldManageSession: (sessionID) =>
-        sessionAgentMap.get(sessionID) === 'orchestrator',
-    });
     waitForUserTools = createWaitForUserTool({
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
@@ -461,7 +453,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     tools = {
       ...cancelTaskTools,
-      ...reconcileTaskTools,
       ...waitForUserTools,
       ...acpRunTools,
       webfetch,

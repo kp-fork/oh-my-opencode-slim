@@ -1163,12 +1163,13 @@ describe('task-session-manager hook', () => {
     const resumeBeforeLiveBusy = {
       args: { subagent_type: 'explorer', task_id: 'ses_timeout' },
     };
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
-      resumeBeforeLiveBusy,
-    );
-
-    expect(resumeBeforeLiveBusy.args.task_id).toBeUndefined();
+    await expect(
+      hook['tool.execute.before'](
+        { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
+        resumeBeforeLiveBusy,
+      ),
+    ).rejects.toThrow('still running');
+    expect(resumeBeforeLiveBusy.args.task_id).toBe('ses_timeout');
 
     await hook.event({
       event: {
@@ -2373,7 +2374,7 @@ describe('task-session-manager hook', () => {
     expect(messages.messages[0].parts[0].text).not.toContain('err-1');
   });
 
-  test('running alias is not resumed by task', async () => {
+  test('running aliases fail closed instead of spawning a new task', async () => {
     const board = new BackgroundJobBoard();
     const { hook } = createHook({ backgroundJobBoard: board });
     board.registerLaunch({
@@ -2384,11 +2385,13 @@ describe('task-session-manager hook', () => {
     });
 
     const resume = { args: { subagent_type: 'explorer', task_id: 'exp-1' } };
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
-      resume,
-    );
-    expect(resume.args.task_id).toBeUndefined();
+    await expect(
+      hook['tool.execute.before'](
+        { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+        resume,
+      ),
+    ).rejects.toThrow('still running');
+    expect(resume.args.task_id).toBe('exp-1');
   });
 
   test('task alias is dropped when subagent_type is missing', async () => {
