@@ -184,6 +184,28 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    name: 'running-lane',
+    description:
+      'parent keeps talking while a background lane is still running (PR #871 window)',
+    triggers:
+      'running task tool_result sits mid-history across consecutive requests; byte churn there busts the cache tail',
+    turns: (nonce) => [
+      {
+        text: `Cache smoke probe ${nonce}. Launch exactly one background @explorer task with this prompt: "Produce a very thorough report of at least 600 words describing every file in the current directory, its likely purpose, and recommendations." Do not wait for it — reply immediately with exactly "ack lane started".`,
+      },
+      {
+        text: `Reply with exactly "ack while running" and nothing else. ${NO_TOOLS}`,
+      },
+      {
+        text: `Reply with exactly "ack still running" and nothing else. ${NO_TOOLS}`,
+        pauseAfterMs: 45_000,
+      },
+      {
+        text: 'Reconcile any completed background tasks, then reply with exactly "ack lane done".',
+      },
+    ],
+  },
+  {
     name: 'agents',
     description:
       'repeated delegation: same specialist twice (session reuse), then a second specialist',
